@@ -280,7 +280,9 @@ export async function saveRollCall(input: {
   return loadSnapshot(true);
 }
 
-export async function upsertGroup(group: Omit<Group, "id"> & { id?: string }): Promise<LmsSnapshot> {
+export async function upsertGroup(
+  group: Omit<Group, "id"> & { id?: string | undefined },
+): Promise<LmsSnapshot> {
   const store = await currentStore();
   if (group.id) {
     store.groups = store.groups.map((g) => (g.id === group.id ? ({ ...g, ...group } as Group) : g));
@@ -312,7 +314,7 @@ export async function createStudent(input: {
   phone: string;
   level: string;
   balance: number;
-  groupId?: string;
+  groupId?: string | undefined;
 }): Promise<LmsSnapshot> {
   const store = await currentStore();
   const student: Student = {
