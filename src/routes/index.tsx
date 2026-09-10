@@ -63,7 +63,7 @@ function RollCallPage() {
       .filter((a) => a.studentId === studentId && a.groupId === groupId)
       .sort((a, b) => (a.date < b.date ? -1 : 1))
       .slice(-4);
-    const boxes = recent.map((a) =>
+    const boxes: TrackerBox[] = recent.map((a) =>
       a.status === "present" ? (a.paid ? "present" : "unpaid") : "absent",
     );
     while (boxes.length < 4) boxes.unshift("empty");
