@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Archive, Plus, RotateCcw, Pencil } from "lucide-react";
+import { Archive, Plus, RotateCcw, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { snapshotQuery } from "@/lib/lms-client";
-import { saveGroup, toggleGroupStatus } from "@/lib/lms.functions";
+import { removeGroup, saveGroup, toggleGroupStatus } from "@/lib/lms.functions";
 import { formatMoney, type Group, type LmsSnapshot } from "@/lib/lms-types";
 import { cn } from "@/lib/utils";
 
@@ -53,7 +53,9 @@ function GroupsPage() {
   const queryClient = useQueryClient();
   const persist = useServerFn(saveGroup);
   const setStatus = useServerFn(toggleGroupStatus);
+  const destroy = useServerFn(removeGroup);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Group | null>(null);
 
   const onSuccess = (snapshot: LmsSnapshot) => {
     queryClient.setQueryData(snapshotQuery.queryKey, snapshot);
