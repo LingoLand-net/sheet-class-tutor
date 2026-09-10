@@ -135,63 +135,154 @@ function studentRow(s: Student): (string | number)[] {
 
 function sampleStore(): Store {
   const groups: Group[] = [
-    { id: "g1", name: "Beginners A1 — Morning", level: "A1", teacher: "Ms. Nadia", schedule: "Mon/Wed 09:00", pricePerSession: 12, status: "active" },
-    { id: "g2", name: "Intermediate B1 — Evening", level: "B1", teacher: "Mr. Karim", schedule: "Tue/Thu 18:00", pricePerSession: 15, status: "active" },
-    { id: "g3", name: "IELTS Prep Intensive", level: "C1", teacher: "Ms. Lina", schedule: "Sat 10:00", pricePerSession: 20, status: "active" },
-    { id: "g4", name: "Kids A0 — Summer", level: "A0", teacher: "Ms. Rana", schedule: "Fri 11:00", pricePerSession: 10, status: "archived" },
+    { id: "g-spanish", name: "Beginner Spanish", level: "A1", teacher: "Ms. Lucia Ramos", schedule: "Mon/Wed 17:30", pricePerSession: 14, status: "active" },
+    { id: "g-business", name: "Business English", level: "B2", teacher: "Mr. David Cole", schedule: "Tue/Thu 19:00", pricePerSession: 22, status: "active" },
+    { id: "g-french", name: "French A1", level: "A1", teacher: "Mme. Claire Petit", schedule: "Sat 10:00", pricePerSession: 16, status: "active" },
+    { id: "g-italian", name: "Conversational Italian", level: "B1", teacher: "Sig. Marco Rossi", schedule: "Fri 18:00", pricePerSession: 18, status: "archived" },
   ];
 
-  const names = [
-    ["s1", "Amina Haddad", "A1", "g1", 24],
-    ["s2", "Youssef Barakat", "A1", "g1", -12],
-    ["s3", "Lea Mansour", "A1", "g1", 0],
-    ["s4", "Omar Chidiac", "A1", "g1", 36],
-    ["s5", "Nour Fares", "B1", "g2", -15],
-    ["s6", "Rami Kassem", "B1", "g2", 45],
-    ["s7", "Dina Sleiman", "B1", "g2", 0],
-    ["s8", "Karim Ayoub", "B1", "g2", 30],
-    ["s9", "Maya Rizk", "C1", "g3", 60],
-    ["s10", "Hadi Nassar", "C1", "g3", -20],
-    ["s11", "Sara Khoury", "C1", "g3", 20],
-    ["s12", "Tarek Zein", "A0", "g4", 0],
+  const roster = [
+    ["s-01", "Amina Haddad", "+1 202 555 0114", "A1", 28, "g-spanish", "2026-01-12"],
+    ["s-02", "Youssef Barakat", "+1 202 555 0129", "A1", -14, "g-spanish", "2026-01-19"],
+    ["s-03", "Lea Mansour", "+1 202 555 0137", "A1", 0, "g-spanish", "2026-02-02"],
+    ["s-04", "Omar Chidiac", "+1 202 555 0142", "A1", 42, "g-spanish", "2026-02-14"],
+    ["s-05", "Priya Nair", "+1 202 555 0158", "A1", 14, "g-spanish", "2026-03-03"],
+    ["s-06", "Nour Fares", "+1 202 555 0163", "B2", -22, "g-business", "2026-01-27"],
+    ["s-07", "Rami Kassem", "+1 202 555 0171", "B2", 66, "g-business", "2026-02-09"],
+    ["s-08", "Dina Sleiman", "+1 202 555 0186", "B2", 0, "g-business", "2026-02-23"],
+    ["s-09", "Karim Ayoub", "+1 202 555 0194", "B2", 44, "g-business", "2026-03-16"],
+    ["s-10", "Elena Fischer", "+1 202 555 0208", "B2", -44, "g-business", "2026-04-06"],
+    ["s-11", "Maya Rizk", "+1 202 555 0215", "A1", 32, "g-french", "2026-01-30"],
+    ["s-12", "Hadi Nassar", "+1 202 555 0223", "A1", -16, "g-french", "2026-02-17"],
+    ["s-13", "Sara Khoury", "+1 202 555 0231", "A1", 48, "g-french", "2026-03-09"],
+    ["s-14", "Tomas Alvarez", "+1 202 555 0247", "A1", 0, "g-french", "2026-04-20"],
+    ["s-15", "Jing Wei Liu", "+1 202 555 0256", "B1", 18, "g-italian", "2026-01-08"],
   ] as const;
 
-  const students: Student[] = names.map(([id, name, level, , balance], i) => ({
+  const students: Student[] = roster.map(([id, name, phone, level, balance, , createdAt]) => ({
     id,
     name,
-    phone: `+961 3 ${100000 + i * 1111}`,
+    phone,
     level,
     balance,
-    createdAt: "2026-01-15",
+    createdAt,
   }));
 
-  const enrollments: Enrollment[] = names.map(([id, , , groupId], i) => ({
-    id: `e${i + 1}`,
+  const enrollments: Enrollment[] = roster.map(([id, , , , , groupId], i) => ({
+    id: `e-${String(i + 1).padStart(2, "0")}`,
     studentId: id,
     groupId,
     status: "active",
   }));
+  // A returning student also attends the evening business class.
+  enrollments.push({ id: "e-16", studentId: "s-11", groupId: "g-business", status: "active" });
+
+  const sessionDates: Record<string, string[]> = {
+    "g-spanish": ["2026-08-24", "2026-08-26", "2026-08-31", "2026-09-02", "2026-09-07"],
+    "g-business": ["2026-08-25", "2026-08-27", "2026-09-01", "2026-09-03", "2026-09-08"],
+    "g-french": ["2026-08-22", "2026-08-29", "2026-09-05"],
+  };
 
   const attendance: AttendanceRecord[] = [];
-  const dates = ["2026-09-02", "2026-09-04", "2026-09-07"];
-  names.forEach(([id, , , groupId], si) => {
-    const group = groups.find((g) => g.id === groupId)!;
+  let seq = 0;
+  for (const enrollment of enrollments) {
+    const group = groups.find((g) => g.id === enrollment.groupId);
+    const dates = sessionDates[enrollment.groupId];
+    if (!group || !dates) continue;
+    const offset = Number(enrollment.studentId.slice(-2));
     dates.forEach((date, di) => {
-      const present = (si + di) % 4 !== 0;
-      const paid = (si + di) % 3 === 0;
+      seq += 1;
+      const present = (offset + di) % 5 !== 0;
+      const paid = present && (offset + di) % 3 !== 2;
       attendance.push({
-        id: `a${si}-${di}`,
+        id: `a-${String(seq).padStart(4, "0")}`,
         date,
-        groupId,
-        studentId: id,
+        groupId: group.id,
+        studentId: enrollment.studentId,
         status: present ? "present" : "absent",
         paid,
         amount: paid ? group.pricePerSession : 0,
       });
     });
+  }
+
+  // Standalone top-up payments recorded at the front desk.
+  const topUps: [string, string, string, number][] = [
+    ["s-04", "g-spanish", "2026-08-23", 70],
+    ["s-07", "g-business", "2026-08-24", 110],
+    ["s-13", "g-french", "2026-08-30", 80],
+    ["s-01", "g-spanish", "2026-09-06", 56],
+  ];
+  topUps.forEach(([studentId, groupId, date, amount], i) => {
+    attendance.push({
+      id: `p-${String(i + 1).padStart(3, "0")}`,
+      date,
+      groupId,
+      studentId,
+      status: "absent",
+      paid: true,
+      amount,
+    });
   });
 
   return { groups, students, enrollments, attendance };
+}
+
+const HEADERS: Record<string, string[]> = {
+  GROUPS: ["id", "name", "level", "teacher", "schedule", "price_per_session", "status"],
+  STUDENTS: ["id", "name", "phone", "level", "balance", "created_at"],
+  ENROLLMENTS: ["id", "student_id", "group_id", "status"],
+  ATTENDANCE: ["id", "date", "group_id", "student_id", "status", "paid", "amount"],
+};
+
+export async function seedDemoData(): Promise<LmsSnapshot> {
+  const store = sampleStore();
+  memoryStore = store;
+
+  if (sheetsConnected()) {
+    const cfg = sheetsConfig()!;
+    await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchClear`, {
+      method: "POST",
+      body: JSON.stringify({
+        ranges: ["GROUPS!A1:G20000", "STUDENTS!A1:F20000", "ENROLLMENTS!A1:D20000", "ATTENDANCE!A1:G20000"],
+      }),
+    });
+    await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchUpdate`, {
+      method: "POST",
+      body: JSON.stringify({
+        valueInputOption: "USER_ENTERED",
+        data: [
+          { range: "GROUPS!A1", values: [HEADERS["GROUPS"]!, ...store.groups.map(groupRow)] },
+          { range: "STUDENTS!A1", values: [HEADERS["STUDENTS"]!, ...store.students.map(studentRow)] },
+          {
+            range: "ENROLLMENTS!A1",
+            values: [
+              HEADERS["ENROLLMENTS"]!,
+              ...store.enrollments.map((e) => [e.id, e.studentId, e.groupId, e.status]),
+            ],
+          },
+          {
+            range: "ATTENDANCE!A1",
+            values: [
+              HEADERS["ATTENDANCE"]!,
+              ...store.attendance.map((a) => [
+                a.id,
+                a.date,
+                a.groupId,
+                a.studentId,
+                a.status,
+                a.paid ? "TRUE" : "FALSE",
+                a.amount,
+              ]),
+            ],
+          },
+        ],
+      }),
+    });
+  }
+
+  invalidate();
+  return loadSnapshot(true);
 }
 
 function getMemoryStore(): Store {
