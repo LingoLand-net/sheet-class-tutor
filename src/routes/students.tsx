@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Plus, Search, Wallet, CalendarCheck, CalendarX } from "lucide-react";
+import { Plus, Search, Wallet, CalendarCheck, CalendarX, Pencil, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -11,8 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { snapshotQuery } from "@/lib/lms-client";
-import { addPayment, registerStudent } from "@/lib/lms.functions";
-import { formatMoney, type LmsSnapshot } from "@/lib/lms-types";
+import { addPayment, editStudent, registerStudent, removeStudent } from "@/lib/lms.functions";
+import { formatMoney, type LmsSnapshot, type Student } from "@/lib/lms-types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/students")({
