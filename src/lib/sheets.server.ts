@@ -439,6 +439,103 @@ export async function createStudent(input: {
   return loadSnapshot(true);
 }
 
+async function replaceAll(store: Store): Promise<void> {
+  if (!sheetsConnected()) {
+    memoryStore = store;
+    return;
+  }
+  const cfg = sheetsConfig()!;
+  try {
+    await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchClear`, {
+      method: "POST",
+      body: JSON.stringify({
+        ranges: [
+          "GROUPS!A2:G20000",
+          "STUDENTS!A2:F20000",
+          "ENROLLMENTS!A2:D20000",
+          "ATTENDANCE!A2:G20000",
+        ],
+      }),
+    });
+    await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchUpdate`, {
+      method: "POST",
+      body: JSON.stringify({
+        valueInputOption: "USER_ENTERED",
+        data: [
+          { range: "GROUPS!A2", values: store.groups.map(groupRow) },
+          { range: "STUDENTS!A2", values: store.students.map(studentRow) },
+          {
+            range: "ENROLLMENTS!A2",
+            values: store.enrollments.map((e) => [e.id, e.studentId, e.groupId, e.status]),
+          },
+          {
+            range: "ATTENDANCE!A2",
+            values: store.attendance.map((a) => [
+              a.id,
+              a.date,
+              a.groupId,
+              a.studentId,
+              a.status,
+              a.paid ? "TRUE" : "FALSE",
+              a.amount,
+            ]),
+          },
+        ].filter((d) => d.values.length > 0),
+      }),
+    });
+  } catch {
+    memoryStore = store;
+  }
+}
+
+export async function deleteGroup(id: string): Promise<LmsSnapshot> {
+  const store = await currentStore();
+  store.groups = store.groups.filter((g) => g.id !== id);
+  store.enrollments = store.enrollments.filter((e) => e.groupId !== id);
+  store.attendance = store.attendance.filter((a) => a.groupId !== id);
+  await replaceAll(store);
+  invalidate();
+  return loadSnapshot(true);
+}
+
+export async function updateStudent(input: {
+  id: string;
+  name: string;
+  phone: string;
+  level: string;
+  balance: number;
+  groupId?: string | undefined;
+}): Promise<LmsSnapshot> {
+  const store = await currentStore();
+  store.students = store.students.map((s) =>
+    s.id === input.id
+      ? { ...s, name: input.name, phone: input.phone, level: input.level, balance: input.balance }
+      : s,
+  );
+  if (input.groupId !== undefined) {
+    store.enrollments = store.enrollments.filter((e) => e.studentId !== input.id);
+    if (input.groupId) {
+      store.enrollments = [
+        ...store.enrollments,
+        { id: newId("e"), studentId: input.id, groupId: input.groupId, status: "active" },
+      ];
+    }
+  }
+  await replaceAll(store);
+  invalidate();
+  return loadSnapshot(true);
+}
+
+export async function deleteStudent(id: string): Promise<LmsSnapshot> {
+  const store = await currentStore();
+  store.students = store.students.filter((s) => s.id !== id);
+  store.enrollments = store.enrollments.filter((e) => e.studentId !== id);
+  store.attendance = store.attendance.filter((a) => a.studentId !== id);
+  await replaceAll(store);
+  invalidate();
+  return loadSnapshot(true);
+}
+
 export async function recordPayment(studentId: string, amount: number): Promise<LmsSnapshot> {
   const store = await currentStore();
   store.students = store.students.map((s) =>

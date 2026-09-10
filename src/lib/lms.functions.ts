@@ -75,6 +75,38 @@ export const registerStudent = createServerFn({ method: "POST" })
     return createStudent(data);
   });
 
+export const removeGroup = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => z.object({ id: z.string().min(1) }).parse(input))
+  .handler(async ({ data }): Promise<LmsSnapshot> => {
+    const { deleteGroup } = await import("./sheets.server");
+    return deleteGroup(data.id);
+  });
+
+export const editStudent = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        id: z.string().min(1),
+        name: z.string().min(1),
+        phone: z.string().default(""),
+        level: z.string().default(""),
+        balance: z.number().default(0),
+        groupId: z.string().optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }): Promise<LmsSnapshot> => {
+    const { updateStudent } = await import("./sheets.server");
+    return updateStudent(data);
+  });
+
+export const removeStudent = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => z.object({ id: z.string().min(1) }).parse(input))
+  .handler(async ({ data }): Promise<LmsSnapshot> => {
+    const { deleteStudent } = await import("./sheets.server");
+    return deleteStudent(data.id);
+  });
+
 export const addPayment = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z.object({ studentId: z.string().min(1), amount: z.number() }).parse(input),
