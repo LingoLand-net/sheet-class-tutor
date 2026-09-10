@@ -117,7 +117,7 @@ function GroupsPage() {
               {formatMoney(group.pricePerSession)} / session · {countFor(group.id)} students
             </p>
 
-            <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="mt-4 grid grid-cols-3 gap-2">
               <button
                 type="button"
                 disabled={!unlocked}
@@ -146,6 +146,14 @@ function GroupsPage() {
                     <RotateCcw className="size-5" /> Activate
                   </>
                 )}
+              </button>
+              <button
+                type="button"
+                disabled={!unlocked || deleteMutation.isPending}
+                onClick={() => setPendingDelete(group)}
+                className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-destructive/10 font-semibold text-destructive disabled:opacity-40"
+              >
+                <Trash2 className="size-5" /> Delete
               </button>
             </div>
           </div>
