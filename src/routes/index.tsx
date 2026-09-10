@@ -200,34 +200,51 @@ function RollCallPage() {
                 </span>
               </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-2">
+              <div className="mt-3 flex gap-1.5">
+                {trackerFor(student.id).map((box, i) => (
+                  <span
+                    key={i}
+                    className={cn(
+                      "h-6 flex-1 rounded-md",
+                      box === "present" && "bg-chart-2",
+                      box === "unpaid" && "bg-destructive",
+                      box === "absent" && "bg-muted",
+                      box === "empty" && "bg-muted/50",
+                    )}
+                  />
+                ))}
+              </div>
+
+              <div className="mt-4">
                 <button
                   type="button"
                   disabled={!unlocked}
-                  onClick={() => setEntry(student.id, { status: "present" })}
+                  onClick={() =>
+                    setEntry(student.id, {
+                      status: entryFor(student.id).status === "present" ? "absent" : "present",
+                    })
+                  }
                   className={cn(
-                    "flex min-h-12 items-center justify-center gap-2 rounded-2xl font-semibold disabled:opacity-40",
-                    entry?.status === "present"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-secondary text-secondary-foreground",
+                    "flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl font-semibold disabled:opacity-40",
+                    !entry
+                      ? "bg-secondary text-secondary-foreground"
+                      : entry.status === "present"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-destructive text-destructive-foreground",
                   )}
                 >
-                  <Check className="size-5" /> Present
-                </button>
-                <button
-                  type="button"
-                  disabled={!unlocked}
-                  onClick={() => setEntry(student.id, { status: "absent" })}
-                  className={cn(
-                    "flex min-h-12 items-center justify-center gap-2 rounded-2xl font-semibold disabled:opacity-40",
-                    entry?.status === "absent"
-                      ? "bg-destructive text-destructive-foreground"
-                      : "bg-secondary text-secondary-foreground",
+                  {entry?.status === "absent" ? (
+                    <>
+                      <X className="size-5" /> Absent
+                    </>
+                  ) : (
+                    <>
+                      <Check className="size-5" /> {entry ? "Present" : "Mark present"}
+                    </>
                   )}
-                >
-                  <X className="size-5" /> Absent
                 </button>
               </div>
+
 
               <button
                 type="button"
