@@ -150,6 +150,11 @@ function GroupsPage() {
             </div>
           </div>
         ))}
+        {data.groups.length === 0 ? (
+          <p className="text-muted-foreground">
+            No groups yet. Unlock with the padlock and tap New to add your first class.
+          </p>
+        ) : null}
       </div>
 
       <Dialog open={draft !== null} onOpenChange={(open) => !open && setDraft(null)}>

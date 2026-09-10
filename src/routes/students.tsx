@@ -162,6 +162,11 @@ function StudentsPage() {
             </button>
           );
         })}
+        {filtered.length === 0 ? (
+          <p className="text-muted-foreground">
+            No students yet. Unlock with the padlock and tap Register to add one.
+          </p>
+        ) : null}
       </div>
 
       <Dialog open={openNew} onOpenChange={setOpenNew}>
