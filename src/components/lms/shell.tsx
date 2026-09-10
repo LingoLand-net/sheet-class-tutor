@@ -1,8 +1,21 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ClipboardCheck, Users, GraduationCap } from "lucide-react";
-import type { ReactNode } from "react";
+import { ClipboardCheck, Users, GraduationCap, DatabaseBackup, Loader2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { toast } from "sonner";
 
-import { AdminPadlock } from "@/components/lms/admin-lock";
+import { AdminPadlock, useAdmin } from "@/components/lms/admin-lock";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { seedDemo } from "@/lib/lms.functions";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -31,6 +44,7 @@ export function AppShell({
         </div>
         <div className="flex items-center gap-3">
           {actions}
+          <SeedDemoButton />
           <AdminPadlock />
         </div>
       </header>
