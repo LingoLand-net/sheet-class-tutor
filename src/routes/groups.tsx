@@ -237,6 +237,38 @@ function GroupsPage() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+      >
+        <DialogContent className="max-w-md rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Delete {pendingDelete?.name}?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This removes the group, its enrollments, and its attendance history from the sheet. This
+            cannot be undone.
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setPendingDelete(null)}
+              className="min-h-14 rounded-2xl bg-secondary font-bold text-secondary-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={deleteMutation.isPending}
+              onClick={() => pendingDelete && deleteMutation.mutate(pendingDelete.id)}
+              className="min-h-14 rounded-2xl bg-destructive font-bold text-destructive-foreground disabled:opacity-50"
+            >
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
