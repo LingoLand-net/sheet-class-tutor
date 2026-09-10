@@ -34,6 +34,8 @@ export const Route = createFileRoute("/")({
   component: RollCallPage,
 });
 
+type TrackerBox = "present" | "unpaid" | "absent" | "empty";
+
 function RollCallPage() {
   const { data } = useSuspenseQuery(snapshotQuery);
   const { unlocked } = useAdmin();
