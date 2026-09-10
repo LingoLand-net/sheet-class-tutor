@@ -8,6 +8,11 @@ export const getSnapshot = createServerFn({ method: "GET" }).handler(async (): P
   return loadSnapshot();
 });
 
+export const seedDemo = createServerFn({ method: "POST" }).handler(async (): Promise<LmsSnapshot> => {
+  const { seedDemoData } = await import("./sheets.server");
+  return seedDemoData();
+});
+
 const rollCallSchema = z.object({
   groupId: z.string().min(1),
   date: z.string().min(1),
