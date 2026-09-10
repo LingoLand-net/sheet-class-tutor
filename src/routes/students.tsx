@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Plus, Search, Wallet, CalendarCheck, CalendarX } from "lucide-react";
+import { Plus, Search, Wallet, CalendarCheck, CalendarX, Pencil, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -11,8 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { snapshotQuery } from "@/lib/lms-client";
-import { addPayment, registerStudent } from "@/lib/lms.functions";
-import { formatMoney, type LmsSnapshot } from "@/lib/lms-types";
+import { addPayment, editStudent, registerStudent, removeStudent } from "@/lib/lms.functions";
+import { formatMoney, type LmsSnapshot, type Student } from "@/lib/lms-types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/students")({
@@ -43,12 +43,23 @@ function StudentsPage() {
   const queryClient = useQueryClient();
   const register = useServerFn(registerStudent);
   const pay = useServerFn(addPayment);
+  const update = useServerFn(editStudent);
+  const destroy = useServerFn(removeStudent);
 
   const [search, setSearch] = useState("");
   const [openNew, setOpenNew] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", phone: "", level: "", balance: "0", groupId: "" });
   const [payAmount, setPayAmount] = useState("");
+  const [editForm, setEditForm] = useState<{
+    id: string;
+    name: string;
+    phone: string;
+    level: string;
+    balance: string;
+    groupId: string;
+  } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Student | null>(null);
 
   const onSuccess = (snapshot: LmsSnapshot) => {
     queryClient.setQueryData(snapshotQuery.queryKey, snapshot);
@@ -83,6 +94,51 @@ function StudentsPage() {
     },
     onError: () => toast.error("Could not record the payment"),
   });
+
+  const editMutation = useMutation({
+    mutationFn: (input: NonNullable<typeof editForm>) =>
+      update({
+        data: {
+          id: input.id,
+          name: input.name,
+          phone: input.phone,
+          level: input.level,
+          balance: Number(input.balance) || 0,
+          groupId: input.groupId,
+        },
+      }),
+    onSuccess: (snapshot: LmsSnapshot) => {
+      onSuccess(snapshot);
+      setEditForm(null);
+      toast.success("Student updated");
+    },
+    onError: () => toast.error("Could not update the student"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => destroy({ data: { id } }),
+    onSuccess: (snapshot: LmsSnapshot) => {
+      onSuccess(snapshot);
+      setPendingDelete(null);
+      setSelectedId(null);
+      toast.success("Student deleted");
+    },
+    onError: () => toast.error("Could not delete the student"),
+  });
+
+  const openEdit = (student: Student) => {
+    const enrollment = data.enrollments.find(
+      (e) => e.studentId === student.id && e.status === "active",
+    );
+    setEditForm({
+      id: student.id,
+      name: student.name,
+      phone: student.phone,
+      level: student.level,
+      balance: String(student.balance),
+      groupId: enrollment?.groupId ?? "",
+    });
+  };
 
   const filtered = useMemo(
     () =>
@@ -135,13 +191,15 @@ function StudentsPage() {
             (e) => e.studentId === student.id && e.status === "active",
           );
           return (
-            <button
+            <div
               key={student.id}
-              type="button"
-              onClick={() => setSelectedId(student.id)}
-              className="min-h-20 rounded-3xl border border-border bg-card p-4 text-left"
+              className="rounded-3xl border border-border bg-card p-4"
             >
-              <div className="flex items-start justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setSelectedId(student.id)}
+                className="flex w-full items-start justify-between gap-3 text-left"
+              >
                 <div className="min-w-0">
                   <p className="truncate text-lg font-semibold text-foreground">{student.name}</p>
                   <p className="truncate text-sm text-muted-foreground">
@@ -158,8 +216,27 @@ function StudentsPage() {
                 >
                   {formatMoney(student.balance)}
                 </span>
+              </button>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={!unlocked}
+                  onClick={() => openEdit(student)}
+                  className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-secondary font-semibold text-secondary-foreground disabled:opacity-40"
+                >
+                  <Pencil className="size-5" /> Edit
+                </button>
+                <button
+                  type="button"
+                  disabled={!unlocked || deleteMutation.isPending}
+                  onClick={() => setPendingDelete(student)}
+                  className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-destructive/10 font-semibold text-destructive disabled:opacity-40"
+                >
+                  <Trash2 className="size-5" /> Delete
+                </button>
               </div>
-            </button>
+            </div>
           );
         })}
         {filtered.length === 0 ? (
@@ -314,6 +391,116 @@ function StudentsPage() {
               </div>
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editForm !== null} onOpenChange={(open) => !open && setEditForm(null)}>
+        <DialogContent className="max-h-[85dvh] max-w-lg overflow-y-auto rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Edit student</DialogTitle>
+          </DialogHeader>
+          {editForm ? (
+            <div className="grid gap-4">
+              <Field label="Full name">
+                <Input
+                  className="h-12 text-base"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Phone">
+                  <Input
+                    className="h-12 text-base"
+                    inputMode="tel"
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  />
+                </Field>
+                <Field label="Level">
+                  <Input
+                    className="h-12 text-base"
+                    value={editForm.level}
+                    onChange={(e) => setEditForm({ ...editForm, level: e.target.value })}
+                  />
+                </Field>
+              </div>
+              <Field label="Balance">
+                <Input
+                  className="h-12 text-base"
+                  inputMode="decimal"
+                  value={editForm.balance}
+                  onChange={(e) => setEditForm({ ...editForm, balance: e.target.value })}
+                />
+              </Field>
+              <Field label="Group">
+                <div className="flex flex-wrap gap-2">
+                  {data.groups
+                    .filter((g) => g.status === "active")
+                    .map((g) => (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() =>
+                          setEditForm({
+                            ...editForm,
+                            groupId: editForm.groupId === g.id ? "" : g.id,
+                          })
+                        }
+                        className={cn(
+                          "min-h-12 rounded-2xl px-4 font-semibold",
+                          editForm.groupId === g.id
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-secondary text-secondary-foreground",
+                        )}
+                      >
+                        {g.name}
+                      </button>
+                    ))}
+                </div>
+              </Field>
+              <button
+                type="button"
+                disabled={!editForm.name || editMutation.isPending}
+                onClick={() => editMutation.mutate(editForm)}
+                className="min-h-14 rounded-2xl bg-primary text-lg font-bold text-primary-foreground disabled:opacity-50"
+              >
+                {editMutation.isPending ? "Saving…" : "Save changes"}
+              </button>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+      >
+        <DialogContent className="max-w-md rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Delete {pendingDelete?.name}?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This removes the student, their group enrollment, and their attendance and payment
+            history from the sheet. This cannot be undone.
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setPendingDelete(null)}
+              className="min-h-14 rounded-2xl bg-secondary font-bold text-secondary-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={deleteMutation.isPending}
+              onClick={() => pendingDelete && deleteMutation.mutate(pendingDelete.id)}
+              className="min-h-14 rounded-2xl bg-destructive font-bold text-destructive-foreground disabled:opacity-50"
+            >
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
+            </button>
+          </div>
         </DialogContent>
       </Dialog>
     </AppShell>

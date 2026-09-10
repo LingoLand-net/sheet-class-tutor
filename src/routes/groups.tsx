@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Archive, Plus, RotateCcw, Pencil } from "lucide-react";
+import { Archive, Plus, RotateCcw, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { snapshotQuery } from "@/lib/lms-client";
-import { saveGroup, toggleGroupStatus } from "@/lib/lms.functions";
+import { removeGroup, saveGroup, toggleGroupStatus } from "@/lib/lms.functions";
 import { formatMoney, type Group, type LmsSnapshot } from "@/lib/lms-types";
 import { cn } from "@/lib/utils";
 
@@ -53,7 +53,9 @@ function GroupsPage() {
   const queryClient = useQueryClient();
   const persist = useServerFn(saveGroup);
   const setStatus = useServerFn(toggleGroupStatus);
+  const destroy = useServerFn(removeGroup);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Group | null>(null);
 
   const onSuccess = (snapshot: LmsSnapshot) => {
     queryClient.setQueryData(snapshotQuery.queryKey, snapshot);
@@ -73,6 +75,16 @@ function GroupsPage() {
     mutationFn: (input: { id: string; status: Group["status"] }) => setStatus({ data: input }),
     onSuccess,
     onError: () => toast.error("Could not update the group"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => destroy({ data: { id } }),
+    onSuccess: (snapshot: LmsSnapshot) => {
+      onSuccess(snapshot);
+      setPendingDelete(null);
+      toast.success("Group deleted");
+    },
+    onError: () => toast.error("Could not delete the group"),
   });
 
   const countFor = (groupId: string) =>
@@ -117,7 +129,7 @@ function GroupsPage() {
               {formatMoney(group.pricePerSession)} / session · {countFor(group.id)} students
             </p>
 
-            <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="mt-4 grid grid-cols-3 gap-2">
               <button
                 type="button"
                 disabled={!unlocked}
@@ -146,6 +158,14 @@ function GroupsPage() {
                     <RotateCcw className="size-5" /> Activate
                   </>
                 )}
+              </button>
+              <button
+                type="button"
+                disabled={!unlocked || deleteMutation.isPending}
+                onClick={() => setPendingDelete(group)}
+                className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-destructive/10 font-semibold text-destructive disabled:opacity-40"
+              >
+                <Trash2 className="size-5" /> Delete
               </button>
             </div>
           </div>
@@ -215,6 +235,38 @@ function GroupsPage() {
               </button>
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+      >
+        <DialogContent className="max-w-md rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Delete {pendingDelete?.name}?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This removes the group, its enrollments, and its attendance history from the sheet. This
+            cannot be undone.
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setPendingDelete(null)}
+              className="min-h-14 rounded-2xl bg-secondary font-bold text-secondary-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={deleteMutation.isPending}
+              onClick={() => pendingDelete && deleteMutation.mutate(pendingDelete.id)}
+              className="min-h-14 rounded-2xl bg-destructive font-bold text-destructive-foreground disabled:opacity-50"
+            >
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
+            </button>
+          </div>
         </DialogContent>
       </Dialog>
     </AppShell>

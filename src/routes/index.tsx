@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Check, X, Wallet, Save } from "lucide-react";
+import { Check, X, Wallet, Save, ArrowDownAZ, ArrowUpZA } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -34,6 +34,8 @@ export const Route = createFileRoute("/")({
   component: RollCallPage,
 });
 
+type TrackerBox = "present" | "unpaid" | "absent" | "empty";
+
 function RollCallPage() {
   const { data } = useSuspenseQuery(snapshotQuery);
   const { unlocked } = useAdmin();
@@ -43,6 +45,7 @@ function RollCallPage() {
   const activeGroups = data.groups.filter((g) => g.status === "active");
   const [groupId, setGroupId] = useState(activeGroups[0]?.id ?? "");
   const [marks, setMarks] = useState<Record<string, RollCallEntry>>({});
+  const [sortAsc, setSortAsc] = useState(true);
   const date = todayIso();
 
   const group = data.groups.find((g) => g.id === groupId);
@@ -50,8 +53,24 @@ function RollCallPage() {
     const ids = data.enrollments
       .filter((e) => e.groupId === groupId && e.status === "active")
       .map((e) => e.studentId);
-    return data.students.filter((s) => ids.includes(s.id));
-  }, [data, groupId]);
+    const list = data.students.filter((s) => ids.includes(s.id));
+    return [...list].sort((a, b) =>
+      sortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name),
+    );
+  }, [data, groupId, sortAsc]);
+
+  // Last four recorded sessions per student for the mini tracker.
+  const trackerFor = (studentId: string) => {
+    const recent = data.attendance
+      .filter((a) => a.studentId === studentId && a.groupId === groupId)
+      .sort((a, b) => (a.date < b.date ? -1 : 1))
+      .slice(-4);
+    const boxes: TrackerBox[] = recent.map((a) =>
+      a.status === "present" ? (a.paid ? "present" : "unpaid") : "absent",
+    );
+    while (boxes.length < 4) boxes.unshift("empty");
+    return boxes;
+  };
 
   const mutation = useMutation({
     mutationFn: (entries: RollCallEntry[]) => save({ data: { groupId, date, entries } }),
@@ -130,7 +149,28 @@ function RollCallPage() {
         >
           Clear
         </button>
+        <button
+          type="button"
+          onClick={() => setSortAsc((v) => !v)}
+          className="flex min-h-12 items-center gap-2 rounded-2xl bg-secondary px-5 font-semibold text-secondary-foreground"
+        >
+          {sortAsc ? <ArrowDownAZ className="size-5" /> : <ArrowUpZA className="size-5" />}
+          {sortAsc ? "A–Z" : "Z–A"}
+        </button>
       </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-4 text-xs font-semibold text-muted-foreground">
+        <span className="flex items-center gap-2">
+          <span className="size-4 rounded-md bg-chart-2" /> Attended
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="size-4 rounded-md bg-destructive" /> Payment needed
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="size-4 rounded-md bg-muted" /> Absent / no session
+        </span>
+      </div>
+
 
       <div className="grid gap-3 pb-24 sm:grid-cols-2 xl:grid-cols-3">
         {students.map((student) => {
@@ -160,34 +200,51 @@ function RollCallPage() {
                 </span>
               </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-2">
+              <div className="mt-3 flex gap-1.5">
+                {trackerFor(student.id).map((box, i) => (
+                  <span
+                    key={i}
+                    className={cn(
+                      "h-6 flex-1 rounded-md",
+                      box === "present" && "bg-chart-2",
+                      box === "unpaid" && "bg-destructive",
+                      box === "absent" && "bg-muted",
+                      box === "empty" && "bg-muted/50",
+                    )}
+                  />
+                ))}
+              </div>
+
+              <div className="mt-4">
                 <button
                   type="button"
                   disabled={!unlocked}
-                  onClick={() => setEntry(student.id, { status: "present" })}
+                  onClick={() =>
+                    setEntry(student.id, {
+                      status: entryFor(student.id).status === "present" ? "absent" : "present",
+                    })
+                  }
                   className={cn(
-                    "flex min-h-12 items-center justify-center gap-2 rounded-2xl font-semibold disabled:opacity-40",
-                    entry?.status === "present"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-secondary text-secondary-foreground",
+                    "flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl font-semibold disabled:opacity-40",
+                    !entry
+                      ? "bg-secondary text-secondary-foreground"
+                      : entry.status === "present"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-destructive text-destructive-foreground",
                   )}
                 >
-                  <Check className="size-5" /> Present
-                </button>
-                <button
-                  type="button"
-                  disabled={!unlocked}
-                  onClick={() => setEntry(student.id, { status: "absent" })}
-                  className={cn(
-                    "flex min-h-12 items-center justify-center gap-2 rounded-2xl font-semibold disabled:opacity-40",
-                    entry?.status === "absent"
-                      ? "bg-destructive text-destructive-foreground"
-                      : "bg-secondary text-secondary-foreground",
+                  {entry?.status === "absent" ? (
+                    <>
+                      <X className="size-5" /> Absent
+                    </>
+                  ) : (
+                    <>
+                      <Check className="size-5" /> {entry ? "Present" : "Mark present"}
+                    </>
                   )}
-                >
-                  <X className="size-5" /> Absent
                 </button>
               </div>
+
 
               <button
                 type="button"
