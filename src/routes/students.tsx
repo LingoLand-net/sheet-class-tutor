@@ -43,12 +43,23 @@ function StudentsPage() {
   const queryClient = useQueryClient();
   const register = useServerFn(registerStudent);
   const pay = useServerFn(addPayment);
+  const update = useServerFn(editStudent);
+  const destroy = useServerFn(removeStudent);
 
   const [search, setSearch] = useState("");
   const [openNew, setOpenNew] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", phone: "", level: "", balance: "0", groupId: "" });
   const [payAmount, setPayAmount] = useState("");
+  const [editForm, setEditForm] = useState<{
+    id: string;
+    name: string;
+    phone: string;
+    level: string;
+    balance: string;
+    groupId: string;
+  } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Student | null>(null);
 
   const onSuccess = (snapshot: LmsSnapshot) => {
     queryClient.setQueryData(snapshotQuery.queryKey, snapshot);
