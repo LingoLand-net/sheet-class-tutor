@@ -191,13 +191,15 @@ function StudentsPage() {
             (e) => e.studentId === student.id && e.status === "active",
           );
           return (
-            <button
+            <div
               key={student.id}
-              type="button"
-              onClick={() => setSelectedId(student.id)}
-              className="min-h-20 rounded-3xl border border-border bg-card p-4 text-left"
+              className="rounded-3xl border border-border bg-card p-4"
             >
-              <div className="flex items-start justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setSelectedId(student.id)}
+                className="flex w-full items-start justify-between gap-3 text-left"
+              >
                 <div className="min-w-0">
                   <p className="truncate text-lg font-semibold text-foreground">{student.name}</p>
                   <p className="truncate text-sm text-muted-foreground">
@@ -214,8 +216,27 @@ function StudentsPage() {
                 >
                   {formatMoney(student.balance)}
                 </span>
+              </button>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={!unlocked}
+                  onClick={() => openEdit(student)}
+                  className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-secondary font-semibold text-secondary-foreground disabled:opacity-40"
+                >
+                  <Pencil className="size-5" /> Edit
+                </button>
+                <button
+                  type="button"
+                  disabled={!unlocked || deleteMutation.isPending}
+                  onClick={() => setPendingDelete(student)}
+                  className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-destructive/10 font-semibold text-destructive disabled:opacity-40"
+                >
+                  <Trash2 className="size-5" /> Delete
+                </button>
               </div>
-            </button>
+            </div>
           );
         })}
         {filtered.length === 0 ? (
