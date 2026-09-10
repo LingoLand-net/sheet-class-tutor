@@ -80,3 +80,57 @@ export function SampleBadge({ source }: { source: "sheets" | "sample" }) {
     </span>
   );
 }
+
+function SeedDemoButton() {
+  const { unlocked } = useAdmin();
+  const [confirming, setConfirming] = useState(false);
+  const queryClient = useQueryClient();
+
+  const seed = useMutation({
+    mutationFn: () => seedDemo(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["lms-snapshot"] });
+      toast.success("Demo data loaded");
+    },
+    onError: () => toast.error("Could not load demo data"),
+  });
+
+  if (!unlocked) return null;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        disabled={seed.isPending}
+        aria-label="Seed or reset demo data"
+        className="flex h-12 min-w-12 items-center gap-2 rounded-2xl bg-secondary px-4 text-base font-semibold text-secondary-foreground transition-colors disabled:opacity-60"
+      >
+        {seed.isPending ? (
+          <Loader2 className="size-5 animate-spin" />
+        ) : (
+          <DatabaseBackup className="size-5" />
+        )}
+        <span className="hidden lg:inline">Demo data</span>
+      </button>
+
+      <AlertDialog open={confirming} onOpenChange={setConfirming}>
+        <AlertDialogContent className="rounded-3xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Seed / reset demo data?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This erases everything currently in your four sheet tabs and replaces it with a full
+              set of sample classes, students, attendance and payments.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-12 rounded-2xl">Cancel</AlertDialogCancel>
+            <AlertDialogAction className="min-h-12 rounded-2xl" onClick={() => seed.mutate()}>
+              Replace with demo data
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
