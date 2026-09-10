@@ -77,6 +77,16 @@ function GroupsPage() {
     onError: () => toast.error("Could not update the group"),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => destroy({ data: { id } }),
+    onSuccess: (snapshot: LmsSnapshot) => {
+      onSuccess(snapshot);
+      setPendingDelete(null);
+      toast.success("Group deleted");
+    },
+    onError: () => toast.error("Could not delete the group"),
+  });
+
   const countFor = (groupId: string) =>
     data.enrollments.filter((e) => e.groupId === groupId && e.status === "active").length;
 
