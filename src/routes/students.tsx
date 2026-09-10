@@ -95,6 +95,51 @@ function StudentsPage() {
     onError: () => toast.error("Could not record the payment"),
   });
 
+  const editMutation = useMutation({
+    mutationFn: (input: NonNullable<typeof editForm>) =>
+      update({
+        data: {
+          id: input.id,
+          name: input.name,
+          phone: input.phone,
+          level: input.level,
+          balance: Number(input.balance) || 0,
+          groupId: input.groupId,
+        },
+      }),
+    onSuccess: (snapshot: LmsSnapshot) => {
+      onSuccess(snapshot);
+      setEditForm(null);
+      toast.success("Student updated");
+    },
+    onError: () => toast.error("Could not update the student"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => destroy({ data: { id } }),
+    onSuccess: (snapshot: LmsSnapshot) => {
+      onSuccess(snapshot);
+      setPendingDelete(null);
+      setSelectedId(null);
+      toast.success("Student deleted");
+    },
+    onError: () => toast.error("Could not delete the student"),
+  });
+
+  const openEdit = (student: Student) => {
+    const enrollment = data.enrollments.find(
+      (e) => e.studentId === student.id && e.status === "active",
+    );
+    setEditForm({
+      id: student.id,
+      name: student.name,
+      phone: student.phone,
+      level: student.level,
+      balance: String(student.balance),
+      groupId: enrollment?.groupId ?? "",
+    });
+  };
+
   const filtered = useMemo(
     () =>
       data.students.filter((s) => s.name.toLowerCase().includes(search.trim().toLowerCase())),
