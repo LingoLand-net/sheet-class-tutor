@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Check, X, Wallet, Save } from "lucide-react";
+import { Check, X, Wallet, Save, ArrowDownAZ, ArrowUpZA } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -43,6 +43,7 @@ function RollCallPage() {
   const activeGroups = data.groups.filter((g) => g.status === "active");
   const [groupId, setGroupId] = useState(activeGroups[0]?.id ?? "");
   const [marks, setMarks] = useState<Record<string, RollCallEntry>>({});
+  const [sortAsc, setSortAsc] = useState(true);
   const date = todayIso();
 
   const group = data.groups.find((g) => g.id === groupId);
@@ -50,8 +51,24 @@ function RollCallPage() {
     const ids = data.enrollments
       .filter((e) => e.groupId === groupId && e.status === "active")
       .map((e) => e.studentId);
-    return data.students.filter((s) => ids.includes(s.id));
-  }, [data, groupId]);
+    const list = data.students.filter((s) => ids.includes(s.id));
+    return [...list].sort((a, b) =>
+      sortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name),
+    );
+  }, [data, groupId, sortAsc]);
+
+  // Last four recorded sessions per student for the mini tracker.
+  const trackerFor = (studentId: string) => {
+    const recent = data.attendance
+      .filter((a) => a.studentId === studentId && a.groupId === groupId)
+      .sort((a, b) => (a.date < b.date ? -1 : 1))
+      .slice(-4);
+    const boxes = recent.map((a) =>
+      a.status === "present" ? (a.paid ? "present" : "unpaid") : "absent",
+    );
+    while (boxes.length < 4) boxes.unshift("empty");
+    return boxes;
+  };
 
   const mutation = useMutation({
     mutationFn: (entries: RollCallEntry[]) => save({ data: { groupId, date, entries } }),
