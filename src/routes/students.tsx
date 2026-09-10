@@ -393,6 +393,116 @@ function StudentsPage() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={editForm !== null} onOpenChange={(open) => !open && setEditForm(null)}>
+        <DialogContent className="max-h-[85dvh] max-w-lg overflow-y-auto rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Edit student</DialogTitle>
+          </DialogHeader>
+          {editForm ? (
+            <div className="grid gap-4">
+              <Field label="Full name">
+                <Input
+                  className="h-12 text-base"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Phone">
+                  <Input
+                    className="h-12 text-base"
+                    inputMode="tel"
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  />
+                </Field>
+                <Field label="Level">
+                  <Input
+                    className="h-12 text-base"
+                    value={editForm.level}
+                    onChange={(e) => setEditForm({ ...editForm, level: e.target.value })}
+                  />
+                </Field>
+              </div>
+              <Field label="Balance">
+                <Input
+                  className="h-12 text-base"
+                  inputMode="decimal"
+                  value={editForm.balance}
+                  onChange={(e) => setEditForm({ ...editForm, balance: e.target.value })}
+                />
+              </Field>
+              <Field label="Group">
+                <div className="flex flex-wrap gap-2">
+                  {data.groups
+                    .filter((g) => g.status === "active")
+                    .map((g) => (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() =>
+                          setEditForm({
+                            ...editForm,
+                            groupId: editForm.groupId === g.id ? "" : g.id,
+                          })
+                        }
+                        className={cn(
+                          "min-h-12 rounded-2xl px-4 font-semibold",
+                          editForm.groupId === g.id
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-secondary text-secondary-foreground",
+                        )}
+                      >
+                        {g.name}
+                      </button>
+                    ))}
+                </div>
+              </Field>
+              <button
+                type="button"
+                disabled={!editForm.name || editMutation.isPending}
+                onClick={() => editMutation.mutate(editForm)}
+                className="min-h-14 rounded-2xl bg-primary text-lg font-bold text-primary-foreground disabled:opacity-50"
+              >
+                {editMutation.isPending ? "Saving…" : "Save changes"}
+              </button>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+      >
+        <DialogContent className="max-w-md rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Delete {pendingDelete?.name}?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This removes the student, their group enrollment, and their attendance and payment
+            history from the sheet. This cannot be undone.
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setPendingDelete(null)}
+              className="min-h-14 rounded-2xl bg-secondary font-bold text-secondary-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={deleteMutation.isPending}
+              onClick={() => pendingDelete && deleteMutation.mutate(pendingDelete.id)}
+              className="min-h-14 rounded-2xl bg-destructive font-bold text-destructive-foreground disabled:opacity-50"
+            >
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
