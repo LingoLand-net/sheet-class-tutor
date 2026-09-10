@@ -149,7 +149,28 @@ function RollCallPage() {
         >
           Clear
         </button>
+        <button
+          type="button"
+          onClick={() => setSortAsc((v) => !v)}
+          className="flex min-h-12 items-center gap-2 rounded-2xl bg-secondary px-5 font-semibold text-secondary-foreground"
+        >
+          {sortAsc ? <ArrowDownAZ className="size-5" /> : <ArrowUpZA className="size-5" />}
+          {sortAsc ? "A–Z" : "Z–A"}
+        </button>
       </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-4 text-xs font-semibold text-muted-foreground">
+        <span className="flex items-center gap-2">
+          <span className="size-4 rounded-md bg-chart-2" /> Attended
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="size-4 rounded-md bg-destructive" /> Payment needed
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="size-4 rounded-md bg-muted" /> Absent / no session
+        </span>
+      </div>
+
 
       <div className="grid gap-3 pb-24 sm:grid-cols-2 xl:grid-cols-3">
         {students.map((student) => {
