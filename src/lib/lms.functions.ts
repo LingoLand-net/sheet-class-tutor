@@ -67,6 +67,11 @@ export const registerStudent = createServerFn({ method: "POST" })
         level: z.string().default(""),
         balance: z.number().default(0),
         groupId: z.string().optional(),
+        email: z.string().default(""),
+        guardianName: z.string().default(""),
+        guardianPhone: z.string().default(""),
+        address: z.string().default(""),
+        notes: z.string().default(""),
       })
       .parse(input),
   )
@@ -92,6 +97,11 @@ export const editStudent = createServerFn({ method: "POST" })
         level: z.string().default(""),
         balance: z.number().default(0),
         groupId: z.string().optional(),
+        email: z.string().default(""),
+        guardianName: z.string().default(""),
+        guardianPhone: z.string().default(""),
+        address: z.string().default(""),
+        notes: z.string().default(""),
       })
       .parse(input),
   )

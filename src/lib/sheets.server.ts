@@ -68,7 +68,7 @@ function rowsOf(result: unknown, index: number): string[][] {
 
 async function readFromSheets(): Promise<Store> {
   const cfg = sheetsConfig()!;
-  const ranges = ["GROUPS!A1:G500", "STUDENTS!A1:F2000", "ENROLLMENTS!A1:D5000", "ATTENDANCE!A1:G20000"]
+  const ranges = ["GROUPS!A1:G500", "STUDENTS!A1:K2000", "ENROLLMENTS!A1:D5000", "ATTENDANCE!A1:G20000"]
     .map((r) => `ranges=${r}`)
     .join("&");
   const result = await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchGet?${ranges}`);
@@ -90,6 +90,11 @@ async function readFromSheets(): Promise<Store> {
       level: r[3] ?? "",
       balance: num(r[4]),
       createdAt: r[5] ?? "",
+      email: r[6] ?? "",
+      guardianName: r[7] ?? "",
+      guardianPhone: r[8] ?? "",
+      address: r[9] ?? "",
+      notes: r[10] ?? "",
     })),
     enrollments: rowsOf(result, 2).map((r) => ({
       id: r[0] ?? "",
@@ -130,7 +135,19 @@ function groupRow(g: Group): (string | number)[] {
 }
 
 function studentRow(s: Student): (string | number)[] {
-  return [s.id, s.name, s.phone, s.level, s.balance, s.createdAt];
+  return [
+    s.id,
+    s.name,
+    s.phone,
+    s.level,
+    s.balance,
+    s.createdAt,
+    s.email,
+    s.guardianName,
+    s.guardianPhone,
+    s.address,
+    s.notes,
+  ];
 }
 
 function sampleStore(): Store {
@@ -166,6 +183,11 @@ function sampleStore(): Store {
     level,
     balance,
     createdAt,
+    email: `${name.toLowerCase().replace(/[^a-z]+/g, ".")}@example.com`,
+    guardianName: "",
+    guardianPhone: "",
+    address: "",
+    notes: "",
   }));
 
   const enrollments: Enrollment[] = roster.map(([id, , , , , groupId], i) => ({
@@ -230,7 +252,19 @@ function sampleStore(): Store {
 
 const HEADERS: Record<string, string[]> = {
   GROUPS: ["id", "name", "level", "teacher", "schedule", "price_per_session", "status"],
-  STUDENTS: ["id", "name", "phone", "level", "balance", "created_at"],
+  STUDENTS: [
+    "id",
+    "name",
+    "phone",
+    "level",
+    "balance",
+    "created_at",
+    "email",
+    "guardian_name",
+    "guardian_phone",
+    "address",
+    "notes",
+  ],
   ENROLLMENTS: ["id", "student_id", "group_id", "status"],
   ATTENDANCE: ["id", "date", "group_id", "student_id", "status", "paid", "amount"],
 };
@@ -244,7 +278,7 @@ export async function seedDemoData(): Promise<LmsSnapshot> {
     await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchClear`, {
       method: "POST",
       body: JSON.stringify({
-        ranges: ["GROUPS!A1:G20000", "STUDENTS!A1:F20000", "ENROLLMENTS!A1:D20000", "ATTENDANCE!A1:G20000"],
+        ranges: ["GROUPS!A1:G20000", "STUDENTS!A1:K20000", "ENROLLMENTS!A1:D20000", "ATTENDANCE!A1:G20000"],
       }),
     });
     await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchUpdate`, {
@@ -333,8 +367,15 @@ export async function saveRollCall(input: {
   const group = store.groups.find((g) => g.id === input.groupId);
   const price = group?.pricePerSession ?? 0;
 
+  const prior = new Map<string, AttendanceRecord>();
+  for (const record of store.attendance) {
+    if (record.date === input.date && record.groupId === input.groupId) {
+      prior.set(record.studentId, record);
+    }
+  }
+
   const rows: AttendanceRecord[] = input.entries.map((entry) => ({
-    id: newId("a"),
+    id: prior.get(entry.studentId)?.id ?? newId("a"),
     date: input.date,
     groupId: input.groupId,
     studentId: entry.studentId,
@@ -343,30 +384,28 @@ export async function saveRollCall(input: {
     amount: entry.paid ? price : 0,
   }));
 
+  const effect = (status: "present" | "absent", paid: boolean) =>
+    (status === "present" ? -price : 0) + (paid ? price : 0);
+
   const balanceDelta = new Map<string, number>();
   for (const entry of input.entries) {
-    const delta = (entry.status === "present" ? -price : 0) + (entry.paid ? price : 0);
-    balanceDelta.set(entry.studentId, delta);
+    const before = prior.get(entry.studentId);
+    const previous = before ? effect(before.status, before.paid) : 0;
+    balanceDelta.set(entry.studentId, effect(entry.status, entry.paid) - previous);
   }
 
+  const touched = new Set(input.entries.map((e) => e.studentId));
   store.attendance = [
-    ...store.attendance.filter((a) => !(a.date === input.date && a.groupId === input.groupId)),
+    ...store.attendance.filter(
+      (a) => !(a.date === input.date && a.groupId === input.groupId && touched.has(a.studentId)),
+    ),
     ...rows,
   ];
   store.students = store.students.map((s) =>
     balanceDelta.has(s.id) ? { ...s, balance: s.balance + (balanceDelta.get(s.id) ?? 0) } : s,
   );
 
-  if (sheetsConnected()) {
-    try {
-      await appendRows("ATTENDANCE", rows.map((r) => [r.id, r.date, r.groupId, r.studentId, r.status, r.paid ? "TRUE" : "FALSE", r.amount]));
-      await writeRange("STUDENTS!A2:F2000", store.students.map(studentRow));
-    } catch {
-      /* keep local changes; surfaced through sample source */
-    }
-  } else {
-    memoryStore = store;
-  }
+  await replaceAll(store);
   invalidate();
   return loadSnapshot(true);
 }
@@ -406,6 +445,11 @@ export async function createStudent(input: {
   level: string;
   balance: number;
   groupId?: string | undefined;
+  email?: string | undefined;
+  guardianName?: string | undefined;
+  guardianPhone?: string | undefined;
+  address?: string | undefined;
+  notes?: string | undefined;
 }): Promise<LmsSnapshot> {
   const store = await currentStore();
   const student: Student = {
@@ -415,6 +459,11 @@ export async function createStudent(input: {
     level: input.level,
     balance: input.balance,
     createdAt: new Date().toISOString().slice(0, 10),
+    email: input.email ?? "",
+    guardianName: input.guardianName ?? "",
+    guardianPhone: input.guardianPhone ?? "",
+    address: input.address ?? "",
+    notes: input.notes ?? "",
   };
   store.students = [...store.students, student];
   const enrollment: Enrollment | undefined = input.groupId
@@ -451,7 +500,7 @@ async function replaceAll(store: Store): Promise<void> {
       body: JSON.stringify({
         ranges: [
           "GROUPS!A2:G20000",
-          "STUDENTS!A2:F20000",
+          "STUDENTS!A2:K20000",
           "ENROLLMENTS!A2:D20000",
           "ATTENDANCE!A2:G20000",
         ],
@@ -505,11 +554,27 @@ export async function updateStudent(input: {
   level: string;
   balance: number;
   groupId?: string | undefined;
+  email?: string | undefined;
+  guardianName?: string | undefined;
+  guardianPhone?: string | undefined;
+  address?: string | undefined;
+  notes?: string | undefined;
 }): Promise<LmsSnapshot> {
   const store = await currentStore();
   store.students = store.students.map((s) =>
     s.id === input.id
-      ? { ...s, name: input.name, phone: input.phone, level: input.level, balance: input.balance }
+      ? {
+          ...s,
+          name: input.name,
+          phone: input.phone,
+          level: input.level,
+          balance: input.balance,
+          email: input.email ?? s.email,
+          guardianName: input.guardianName ?? s.guardianName,
+          guardianPhone: input.guardianPhone ?? s.guardianPhone,
+          address: input.address ?? s.address,
+          notes: input.notes ?? s.notes,
+        }
       : s,
   );
   if (input.groupId !== undefined) {
@@ -558,7 +623,7 @@ export async function recordPayment(studentId: string, amount: number): Promise<
       await appendRows("ATTENDANCE", [
         [record.id, record.date, record.groupId, record.studentId, "payment", "TRUE", record.amount],
       ]);
-      await writeRange("STUDENTS!A2:F2000", store.students.map(studentRow));
+      await writeRange("STUDENTS!A2:K2000", store.students.map(studentRow));
     } catch {
       /* fall back to memory */
     }
