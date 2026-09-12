@@ -51,6 +51,10 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-present: var(--present);
+  --color-present-foreground: var(--present-foreground);
+  --color-paid: var(--paid);
+  --color-paid-foreground: var(--paid-foreground);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -87,6 +91,10 @@
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
+  --present: oklch(0.84 0.17 88);
+  --present-foreground: oklch(0.25 0.05 88);
+  --paid: oklch(0.62 0.15 150);
+  --paid-foreground: oklch(0.99 0.01 150);
   --sidebar: oklch(0.984 0.003 247.858);
   --sidebar-foreground: oklch(0.129 0.042 264.695);
   --sidebar-primary: oklch(0.208 0.042 265.755);
@@ -122,6 +130,10 @@
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
+  --present: oklch(0.82 0.16 88);
+  --present-foreground: oklch(0.22 0.05 88);
+  --paid: oklch(0.68 0.15 150);
+  --paid-foreground: oklch(0.18 0.03 150);
   --sidebar: oklch(0.208 0.042 265.755);
   --sidebar-foreground: oklch(0.984 0.003 247.858);
   --sidebar-primary: oklch(0.488 0.243 264.376);
