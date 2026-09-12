@@ -17,6 +17,11 @@ export interface Student {
   level: string;
   balance: number;
   createdAt: string;
+  email: string;
+  guardianName: string;
+  guardianPhone: string;
+  address: string;
+  notes: string;
 }
 
 export interface Enrollment {
