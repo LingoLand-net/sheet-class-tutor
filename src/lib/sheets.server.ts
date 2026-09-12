@@ -367,8 +367,15 @@ export async function saveRollCall(input: {
   const group = store.groups.find((g) => g.id === input.groupId);
   const price = group?.pricePerSession ?? 0;
 
+  const prior = new Map<string, AttendanceRecord>();
+  for (const record of store.attendance) {
+    if (record.date === input.date && record.groupId === input.groupId) {
+      prior.set(record.studentId, record);
+    }
+  }
+
   const rows: AttendanceRecord[] = input.entries.map((entry) => ({
-    id: newId("a"),
+    id: prior.get(entry.studentId)?.id ?? newId("a"),
     date: input.date,
     groupId: input.groupId,
     studentId: entry.studentId,
@@ -377,30 +384,28 @@ export async function saveRollCall(input: {
     amount: entry.paid ? price : 0,
   }));
 
+  const effect = (status: "present" | "absent", paid: boolean) =>
+    (status === "present" ? -price : 0) + (paid ? price : 0);
+
   const balanceDelta = new Map<string, number>();
   for (const entry of input.entries) {
-    const delta = (entry.status === "present" ? -price : 0) + (entry.paid ? price : 0);
-    balanceDelta.set(entry.studentId, delta);
+    const before = prior.get(entry.studentId);
+    const previous = before ? effect(before.status, before.paid) : 0;
+    balanceDelta.set(entry.studentId, effect(entry.status, entry.paid) - previous);
   }
 
+  const touched = new Set(input.entries.map((e) => e.studentId));
   store.attendance = [
-    ...store.attendance.filter((a) => !(a.date === input.date && a.groupId === input.groupId)),
+    ...store.attendance.filter(
+      (a) => !(a.date === input.date && a.groupId === input.groupId && touched.has(a.studentId)),
+    ),
     ...rows,
   ];
   store.students = store.students.map((s) =>
     balanceDelta.has(s.id) ? { ...s, balance: s.balance + (balanceDelta.get(s.id) ?? 0) } : s,
   );
 
-  if (sheetsConnected()) {
-    try {
-      await appendRows("ATTENDANCE", rows.map((r) => [r.id, r.date, r.groupId, r.studentId, r.status, r.paid ? "TRUE" : "FALSE", r.amount]));
-      await writeRange("STUDENTS!A2:K2000", store.students.map(studentRow));
-    } catch {
-      /* keep local changes; surfaced through sample source */
-    }
-  } else {
-    memoryStore = store;
-  }
+  await replaceAll(store);
   invalidate();
   return loadSnapshot(true);
 }
