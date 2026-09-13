@@ -49,7 +49,14 @@ function StudentsPage() {
   const [search, setSearch] = useState("");
   const [openNew, setOpenNew] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", phone: "", level: "", balance: "0", groupId: "" });
+  const [form, setForm] = useState({
+    name: "",
+    phone: "",
+    level: "",
+    balance: "0",
+    groupId: "",
+    email: "",
+  });
   const [payAmount, setPayAmount] = useState("");
   const [editForm, setEditForm] = useState<{
     id: string;
@@ -78,13 +85,14 @@ function StudentsPage() {
           phone: form.phone,
           level: form.level,
           balance: Number(form.balance) || 0,
+          email: form.email,
           ...(form.groupId ? { groupId: form.groupId } : {}),
         },
       }),
     onSuccess: (snapshot: LmsSnapshot) => {
       onSuccess(snapshot);
       setOpenNew(false);
-      setForm({ name: "", phone: "", level: "", balance: "0", groupId: "" });
+      setForm({ name: "", phone: "", level: "", balance: "0", groupId: "", email: "" });
       toast.success("Student registered");
     },
     onError: () => toast.error("Could not register the student"),
@@ -291,6 +299,14 @@ function StudentsPage() {
                 />
               </Field>
             </div>
+            <Field label="Email">
+              <Input
+                className="h-12 text-base"
+                inputMode="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+              />
+            </Field>
             <Field label="Starting balance">
               <Input
                 className="h-12 text-base"
@@ -411,7 +427,7 @@ function StudentsPage() {
 
       <Dialog open={editForm !== null} onOpenChange={(open) => !open && setEditForm(null)}>
         <DialogContent
-          className="top-0 left-0 h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 overflow-y-auto rounded-none border-0 p-6 sm:max-w-none"
+          className="top-0 left-0 h-[100dvh] content-start w-screen max-w-none translate-x-0 translate-y-0 overflow-y-auto rounded-none border-0 p-6 sm:max-w-none"
         >
           <DialogHeader>
             <DialogTitle className="text-2xl">Edit student</DialogTitle>
