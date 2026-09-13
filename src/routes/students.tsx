@@ -58,6 +58,11 @@ function StudentsPage() {
     level: string;
     balance: string;
     groupId: string;
+    email: string;
+    guardianName: string;
+    guardianPhone: string;
+    address: string;
+    notes: string;
   } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Student | null>(null);
 
@@ -105,6 +110,11 @@ function StudentsPage() {
           level: input.level,
           balance: Number(input.balance) || 0,
           groupId: input.groupId,
+          email: input.email,
+          guardianName: input.guardianName,
+          guardianPhone: input.guardianPhone,
+          address: input.address,
+          notes: input.notes,
         },
       }),
     onSuccess: (snapshot: LmsSnapshot) => {
@@ -137,6 +147,11 @@ function StudentsPage() {
       level: student.level,
       balance: String(student.balance),
       groupId: enrollment?.groupId ?? "",
+      email: student.email,
+      guardianName: student.guardianName,
+      guardianPhone: student.guardianPhone,
+      address: student.address,
+      notes: student.notes,
     });
   };
 
@@ -395,9 +410,12 @@ function StudentsPage() {
       </Dialog>
 
       <Dialog open={editForm !== null} onOpenChange={(open) => !open && setEditForm(null)}>
-        <DialogContent className="max-h-[85dvh] max-w-lg overflow-y-auto rounded-3xl">
+        <DialogContent
+          showCloseButton
+          className="h-[100dvh] w-screen max-w-none overflow-y-auto rounded-none border-0 p-6 sm:max-w-none"
+        >
           <DialogHeader>
-            <DialogTitle className="text-xl">Edit student</DialogTitle>
+            <DialogTitle className="text-2xl">Edit student</DialogTitle>
           </DialogHeader>
           {editForm ? (
             <div className="grid gap-4">
