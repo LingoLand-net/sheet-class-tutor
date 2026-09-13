@@ -117,14 +117,14 @@ async function readFromSheets(): Promise<Store> {
 async function appendRows(tab: string, rows: (string | number)[][]) {
   const cfg = sheetsConfig()!;
   await gateway(
-    `/spreadsheets/${cfg.spreadsheetId}/values/${tab}!A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    `/spreadsheets/${cfg.spreadsheetId}/values/${tab}!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
     { method: "POST", body: JSON.stringify({ values: rows }) },
   );
 }
 
 async function writeRange(range: string, rows: (string | number)[][]) {
   const cfg = sheetsConfig()!;
-  await gateway(`/spreadsheets/${cfg.spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
+  await gateway(`/spreadsheets/${cfg.spreadsheetId}/values/${range}?valueInputOption=RAW`, {
     method: "PUT",
     body: JSON.stringify({ values: rows }),
   });
@@ -284,7 +284,7 @@ export async function seedDemoData(): Promise<LmsSnapshot> {
     await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchUpdate`, {
       method: "POST",
       body: JSON.stringify({
-        valueInputOption: "USER_ENTERED",
+        valueInputOption: "RAW",
         data: [
           { range: "GROUPS!A1", values: [HEADERS["GROUPS"]!, ...store.groups.map(groupRow)] },
           { range: "STUDENTS!A1", values: [HEADERS["STUDENTS"]!, ...store.students.map(studentRow)] },
@@ -509,7 +509,7 @@ async function replaceAll(store: Store): Promise<void> {
     await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchUpdate`, {
       method: "POST",
       body: JSON.stringify({
-        valueInputOption: "USER_ENTERED",
+        valueInputOption: "RAW",
         data: [
           { range: "GROUPS!A2", values: store.groups.map(groupRow) },
           { range: "STUDENTS!A2", values: store.students.map(studentRow) },
