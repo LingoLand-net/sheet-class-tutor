@@ -411,7 +411,6 @@ function StudentsPage() {
 
       <Dialog open={editForm !== null} onOpenChange={(open) => !open && setEditForm(null)}>
         <DialogContent
-          showCloseButton
           className="h-[100dvh] w-screen max-w-none overflow-y-auto rounded-none border-0 p-6 sm:max-w-none"
         >
           <DialogHeader>
