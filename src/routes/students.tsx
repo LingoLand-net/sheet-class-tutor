@@ -411,7 +411,7 @@ function StudentsPage() {
 
       <Dialog open={editForm !== null} onOpenChange={(open) => !open && setEditForm(null)}>
         <DialogContent
-          className="h-[100dvh] w-screen max-w-none overflow-y-auto rounded-none border-0 p-6 sm:max-w-none"
+          className="top-0 left-0 h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 overflow-y-auto rounded-none border-0 p-6 sm:max-w-none"
         >
           <DialogHeader>
             <DialogTitle className="text-2xl">Edit student</DialogTitle>
