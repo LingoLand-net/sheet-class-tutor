@@ -418,73 +418,134 @@ function StudentsPage() {
             <DialogTitle className="text-2xl">Edit student</DialogTitle>
           </DialogHeader>
           {editForm ? (
-            <div className="grid gap-4">
-              <Field label="Full name">
-                <Input
-                  className="h-12 text-base"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                />
-              </Field>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Phone">
-                  <Input
-                    className="h-12 text-base"
-                    inputMode="tel"
-                    value={editForm.phone}
-                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                  />
-                </Field>
-                <Field label="Level">
-                  <Input
-                    className="h-12 text-base"
-                    value={editForm.level}
-                    onChange={(e) => setEditForm({ ...editForm, level: e.target.value })}
-                  />
-                </Field>
-              </div>
-              <Field label="Balance">
-                <Input
-                  className="h-12 text-base"
-                  inputMode="decimal"
-                  value={editForm.balance}
-                  onChange={(e) => setEditForm({ ...editForm, balance: e.target.value })}
-                />
-              </Field>
-              <Field label="Group">
-                <div className="flex flex-wrap gap-2">
-                  {data.groups
-                    .filter((g) => g.status === "active")
-                    .map((g) => (
-                      <button
-                        key={g.id}
-                        type="button"
-                        onClick={() =>
-                          setEditForm({
-                            ...editForm,
-                            groupId: editForm.groupId === g.id ? "" : g.id,
-                          })
-                        }
-                        className={cn(
-                          "min-h-12 rounded-2xl px-4 font-semibold",
-                          editForm.groupId === g.id
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-secondary text-secondary-foreground",
-                        )}
-                      >
-                        {g.name}
-                      </button>
-                    ))}
+            <div className="mx-auto grid w-full max-w-4xl gap-6 pb-8">
+              <section className="grid gap-4">
+                <h3 className="text-lg font-bold text-foreground">Student</h3>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Full name">
+                    <Input
+                      className="h-12 text-base"
+                      value={editForm.name}
+                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Level">
+                    <Input
+                      className="h-12 text-base"
+                      value={editForm.level}
+                      onChange={(e) => setEditForm({ ...editForm, level: e.target.value })}
+                    />
+                  </Field>
                 </div>
-              </Field>
-              <button
-                type="button"
-                disabled={!editForm.name || editMutation.isPending}
-                onClick={() => editMutation.mutate(editForm)}
-                className="min-h-14 rounded-2xl bg-primary text-lg font-bold text-primary-foreground disabled:opacity-50"
-              >
-                {editMutation.isPending ? "Saving…" : "Save changes"}
-              </button>
+              </section>
+
+              <section className="grid gap-4">
+                <h3 className="text-lg font-bold text-foreground">Contact details</h3>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Phone">
+                    <Input
+                      className="h-12 text-base"
+                      inputMode="tel"
+                      value={editForm.phone}
+                      onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Email">
+                    <Input
+                      className="h-12 text-base"
+                      inputMode="email"
+                      value={editForm.email}
+                      onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Parent / guardian name">
+                    <Input
+                      className="h-12 text-base"
+                      value={editForm.guardianName}
+                      onChange={(e) => setEditForm({ ...editForm, guardianName: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Parent / guardian phone">
+                    <Input
+                      className="h-12 text-base"
+                      inputMode="tel"
+                      value={editForm.guardianPhone}
+                      onChange={(e) => setEditForm({ ...editForm, guardianPhone: e.target.value })}
+                    />
+                  </Field>
+                </div>
+                <Field label="Address">
+                  <Input
+                    className="h-12 text-base"
+                    value={editForm.address}
+                    onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                  />
+                </Field>
+                <Field label="Notes">
+                  <textarea
+                    rows={3}
+                    className="min-h-24 w-full rounded-xl border border-input bg-transparent px-4 py-3 text-base"
+                    value={editForm.notes}
+                    onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                  />
+                </Field>
+              </section>
+
+              <section className="grid gap-4">
+                <h3 className="text-lg font-bold text-foreground">Class and balance</h3>
+                <Field label="Balance">
+                  <Input
+                    className="h-12 text-base"
+                    inputMode="decimal"
+                    value={editForm.balance}
+                    onChange={(e) => setEditForm({ ...editForm, balance: e.target.value })}
+                  />
+                </Field>
+                <Field label="Group">
+                  <div className="flex flex-wrap gap-2">
+                    {data.groups
+                      .filter((g) => g.status === "active")
+                      .map((g) => (
+                        <button
+                          key={g.id}
+                          type="button"
+                          onClick={() =>
+                            setEditForm({
+                              ...editForm,
+                              groupId: editForm.groupId === g.id ? "" : g.id,
+                            })
+                          }
+                          className={cn(
+                            "min-h-12 rounded-2xl px-4 font-semibold",
+                            editForm.groupId === g.id
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-secondary text-secondary-foreground",
+                          )}
+                        >
+                          {g.name}
+                        </button>
+                      ))}
+                  </div>
+                </Field>
+              </section>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setEditForm(null)}
+                  className="min-h-14 rounded-2xl bg-secondary text-lg font-bold text-secondary-foreground"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!editForm.name || editMutation.isPending}
+                  onClick={() => editMutation.mutate(editForm)}
+                  className="min-h-14 rounded-2xl bg-primary text-lg font-bold text-primary-foreground disabled:opacity-50"
+                >
+                  {editMutation.isPending ? "Saving…" : "Save changes"}
+                </button>
+              </div>
             </div>
           ) : null}
         </DialogContent>
