@@ -57,8 +57,6 @@
   --color-paid-foreground: var(--paid-foreground);
   --color-brand-orange: var(--brand-orange);
   --color-brand-orange-foreground: var(--brand-orange-foreground);
-  --font-display: "Outfit", sans-serif;
-  --font-sans: "Figtree", sans-serif;
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -160,6 +158,5 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-family: var(--font-sans);
   }
 }

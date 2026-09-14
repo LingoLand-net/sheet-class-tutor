@@ -46,7 +46,7 @@ export function AppShell({
             className="size-12 shrink-0 object-contain"
           />
           <div className="min-w-0">
-            <h1 className="truncate font-display text-2xl font-bold text-foreground">{title}</h1>
+            <h1 className="truncate text-2xl font-bold text-foreground">{title}</h1>
             {subtitle ? <p className="truncate text-sm text-muted-foreground">{subtitle}</p> : null}
           </div>
         </div>
