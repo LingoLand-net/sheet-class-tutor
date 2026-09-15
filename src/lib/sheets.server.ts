@@ -604,9 +604,7 @@ export async function updateStudent(input: {
       ];
     }
   }
-  await replaceAll(store);
-  invalidate();
-  return loadSnapshot(true);
+  return commit(store, await replaceAll(store));
 }
 
 export async function deleteStudent(id: string): Promise<LmsSnapshot> {
@@ -614,9 +612,7 @@ export async function deleteStudent(id: string): Promise<LmsSnapshot> {
   store.students = store.students.filter((s) => s.id !== id);
   store.enrollments = store.enrollments.filter((e) => e.studentId !== id);
   store.attendance = store.attendance.filter((a) => a.studentId !== id);
-  await replaceAll(store);
-  invalidate();
-  return loadSnapshot(true);
+  return commit(store, await replaceAll(store));
 }
 
 export async function recordPayment(studentId: string, amount: number): Promise<LmsSnapshot> {
