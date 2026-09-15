@@ -496,10 +496,7 @@ function BoxRow({
   onToggle: () => void;
 }) {
   return (
-    <div className="mt-3">
-      <p className="mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-        {label}
-      </p>
+    <div className="mt-2">
       <div className="flex gap-1.5">
         {dates.map((date, i) => {
           const editable = date === activeDate && !disabled;
