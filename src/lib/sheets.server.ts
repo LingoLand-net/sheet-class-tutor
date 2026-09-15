@@ -8,7 +8,7 @@ import type {
 } from "./lms-types";
 
 const GATEWAY_URL = "https://connector-gateway.lovable.dev/google_sheets/v4";
-const CACHE_TTL_MS = 30_000;
+const CACHE_TTL_MS = 300_000;
 
 type Store = {
   groups: Group[];
@@ -345,13 +345,35 @@ function invalidate() {
   cache = undefined;
 }
 
+function cloneStore(store: Store): Store {
+  return {
+    groups: [...store.groups],
+    students: [...store.students],
+    enrollments: [...store.enrollments],
+    attendance: [...store.attendance],
+  };
+}
+
+/** Reuse the cached rows instead of re-reading the spreadsheet on every write. */
 async function currentStore(): Promise<Store> {
+  if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cloneStore(cache.snapshot);
   if (!sheetsConnected()) return getMemoryStore();
   try {
-    return await readFromSheets();
+    const store = await readFromSheets();
+    cache = { snapshot: { ...cloneStore(store), source: "sheets" }, at: Date.now() };
+    return store;
   } catch {
     return getMemoryStore();
   }
+}
+
+/** Apply the already-known result locally, so a write costs no extra read. */
+function commit(store: Store, synced: boolean): LmsSnapshot {
+  const source: LmsSnapshot["source"] = synced && sheetsConnected() ? "sheets" : "sample";
+  if (source === "sample") memoryStore = store;
+  const snapshot: LmsSnapshot = { ...cloneStore(store), source };
+  cache = { snapshot, at: Date.now() };
+  return snapshot;
 }
 
 function newId(prefix: string): string {
