@@ -1,13 +1,18 @@
-import type {
-  AttendanceRecord,
-  Enrollment,
-  Group,
-  LmsSnapshot,
-  RollCallEntry,
-  Student,
+import {
+  perSessionPrice,
+  todayIso,
+  type AttendanceRecord,
+  type AttendanceStatus,
+  type Enrollment,
+  type Group,
+  type LmsSnapshot,
+  type RollCallEntry,
+  type Student,
 } from "./lms-types";
 
-const GATEWAY_URL = "https://connector-gateway.lovable.dev/google_sheets/v4";
+const SHEETS_API = "https://sheets.googleapis.com/v4";
+const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const CACHE_TTL_MS = 300_000;
 
 type Store = {
@@ -17,47 +22,152 @@ type Store = {
   attendance: AttendanceRecord[];
 };
 
+type Tab = "groups" | "students" | "enrollments" | "attendance";
+const ALL_TABS: readonly Tab[] = ["groups", "students", "enrollments", "attendance"];
+
+type SheetsConfig = {
+  clientEmail: string;
+  privateKey: string;
+  spreadsheetId: string;
+};
+
 let memoryStore: Store | undefined;
 let cache: { snapshot: LmsSnapshot; at: number } | undefined;
 
-function sheetsConfig() {
-  const lovableKey = process.env["LOVABLE_API_KEY"];
-  const connectionKey = process.env["GOOGLE_SHEETS_API_KEY"];
+// Cached across requests in the same server process. Google tokens live
+// for 1h; we refresh 60s early to avoid using one mid-flight.
+let tokenCache: { token: string; expiresAt: number } | undefined;
+let keyCache: CryptoKey | undefined;
+
+function sheetsConfig(): SheetsConfig | undefined {
+  const clientEmail = process.env["GOOGLE_SHEETS_CLIENT_EMAIL"];
+  // Private keys are multiline. Hosting panels usually store them with
+  // literal "\n" sequences — turn those back into real newlines.
+  const rawKey = process.env["GOOGLE_SHEETS_PRIVATE_KEY"];
   const spreadsheetId = process.env["GOOGLE_SHEETS_SPREADSHEET_ID"];
-  if (!lovableKey || !connectionKey || !spreadsheetId) return undefined;
-  return { lovableKey, connectionKey, spreadsheetId };
+  if (!clientEmail || !rawKey || !spreadsheetId) return undefined;
+  return {
+    clientEmail,
+    privateKey: rawKey.replace(/\\n/g, "\n"),
+    spreadsheetId,
+  };
 }
 
 export function sheetsConnected(): boolean {
   return sheetsConfig() !== undefined;
 }
 
+/* ---------- Web Crypto helpers (no external deps) ---------- */
+
+function bytesToBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function stringToBase64Url(input: string): string {
+  return bytesToBase64Url(new TextEncoder().encode(input));
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function getSigningKey(pem: string): Promise<CryptoKey> {
+  if (keyCache) return keyCache;
+  const body = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/, "")
+    .replace(/-----END PRIVATE KEY-----/, "")
+    .replace(/\s+/g, "");
+  const der = base64ToBytes(body);
+  keyCache = await crypto.subtle.importKey(
+    "pkcs8",
+    der,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  return keyCache;
+}
+
+/** Build + sign a JWT assertion and exchange it for an OAuth access token. */
+async function getAccessToken(cfg: SheetsConfig): Promise<string> {
+  if (tokenCache && tokenCache.expiresAt > Date.now() + 60_000) return tokenCache.token;
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const claim = {
+    iss: cfg.clientEmail,
+    scope: SCOPE,
+    aud: TOKEN_URL,
+    exp: now + 3600,
+    iat: now,
+  };
+  const signingInput = `${stringToBase64Url(JSON.stringify(header))}.${stringToBase64Url(
+    JSON.stringify(claim),
+  )}`;
+
+  const key = await getSigningKey(cfg.privateKey);
+  const sig = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    key,
+    new TextEncoder().encode(signingInput),
+  );
+  const jwt = `${signingInput}.${bytesToBase64Url(new Uint8Array(sig))}`;
+
+  const response = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Google token exchange failed [${response.status}]: ${body}`);
+  }
+  const data = (await response.json()) as { access_token: string; expires_in: number };
+  tokenCache = {
+    token: data.access_token,
+    expiresAt: Date.now() + data.expires_in * 1000,
+  };
+  return data.access_token;
+}
+
+/** Authenticated request against the Google Sheets v4 REST API. */
 async function gateway(path: string, init?: RequestInit): Promise<unknown> {
   const cfg = sheetsConfig()!;
-  const response = await fetch(`${GATEWAY_URL}${path}`, {
+  const token = await getAccessToken(cfg);
+  const response = await fetch(`${SHEETS_API}${path}`, {
     ...init,
     headers: {
       "content-type": "application/json",
-      Authorization: `Bearer ${cfg.lovableKey}`,
-      "X-Connection-Api-Key": cfg.connectionKey,
+      Authorization: `Bearer ${token}`,
       ...(init?.headers ?? {}),
     },
   });
   if (!response.ok) {
     const body = await response.text();
-    console.error(`Sheets gateway failed [${response.status}]: ${body}`);
+    console.error(`Sheets API failed [${response.status}]: ${body}`);
     throw new Error(`Sheets request failed [${response.status}]: ${body}`);
   }
   return response.json();
 }
+
+/* ---------- Everything below is unchanged from the previous version ---------- */
 
 function num(value: unknown): number {
   const parsed = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function bool(value: unknown): boolean {
-  return ["true", "yes", "1", "paid"].includes(String(value ?? "").toLowerCase());
+function parseStatus(value: unknown): AttendanceStatus {
+  const s = String(value ?? "").toLowerCase();
+  if (s === "absent") return "absent";
+  if (s === "cancelled") return "cancelled";
+  if (s === "skipped") return "skipped";
+  return "present";
 }
 
 function rowsOf(result: unknown, index: number): string[][] {
@@ -68,7 +178,7 @@ function rowsOf(result: unknown, index: number): string[][] {
 
 async function readFromSheets(): Promise<Store> {
   const cfg = sheetsConfig()!;
-  const ranges = ["GROUPS!A1:G500", "STUDENTS!A1:K2000", "ENROLLMENTS!A1:D5000", "ATTENDANCE!A1:G20000"]
+  const ranges = ["GROUPS!A1:H500", "STUDENTS!A1:K2000", "ENROLLMENTS!A1:D5000", "ATTENDANCE!A1:G20000"]
     .map((r) => `ranges=${r}`)
     .join("&");
   const result = await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchGet?${ranges}`);
@@ -80,8 +190,9 @@ async function readFromSheets(): Promise<Store> {
       level: r[2] ?? "",
       teacher: r[3] ?? "",
       schedule: r[4] ?? "",
-      pricePerSession: num(r[5]),
-      status: (r[6] ?? "active").toLowerCase() === "archived" ? "archived" : "active",
+      pricePerMonth: num(r[5]),
+      sessionsPerMonth: num(r[6]) || 8,
+      status: (r[7] ?? "active").toLowerCase() === "archived" ? "archived" : "active",
     })),
     students: rowsOf(result, 1).map((r) => ({
       id: r[0] ?? "",
@@ -107,8 +218,7 @@ async function readFromSheets(): Promise<Store> {
       date: r[1] ?? "",
       groupId: r[2] ?? "",
       studentId: r[3] ?? "",
-      status: (r[4] ?? "present").toLowerCase() === "absent" ? "absent" : "present",
-      paid: bool(r[5]),
+      status: parseStatus(r[4]),
       amount: num(r[6]),
     })),
   };
@@ -131,195 +241,36 @@ async function writeRange(range: string, rows: (string | number)[][]) {
 }
 
 function groupRow(g: Group): (string | number)[] {
-  return [g.id, g.name, g.level, g.teacher, g.schedule, g.pricePerSession, g.status];
+  return [
+    g.id,
+    g.name,
+    g.level,
+    g.teacher,
+    g.schedule,
+    g.pricePerMonth,
+    g.sessionsPerMonth,
+    g.status,
+  ];
 }
 
 function studentRow(s: Student): (string | number)[] {
   return [
-    s.id,
-    s.name,
-    s.phone,
-    s.level,
-    s.balance,
-    s.createdAt,
-    s.email,
-    s.guardianName,
-    s.guardianPhone,
-    s.address,
-    s.notes,
+    s.id, s.name, s.phone, s.level, s.balance, s.createdAt,
+    s.email, s.guardianName, s.guardianPhone, s.address, s.notes,
   ];
 }
 
-function sampleStore(): Store {
-  const groups: Group[] = [
-    { id: "g-spanish", name: "Beginner Spanish", level: "A1", teacher: "Ms. Lucia Ramos", schedule: "Mon/Wed 17:30", pricePerSession: 14, status: "active" },
-    { id: "g-business", name: "Business English", level: "B2", teacher: "Mr. David Cole", schedule: "Tue/Thu 19:00", pricePerSession: 22, status: "active" },
-    { id: "g-french", name: "French A1", level: "A1", teacher: "Mme. Claire Petit", schedule: "Sat 10:00", pricePerSession: 16, status: "active" },
-    { id: "g-italian", name: "Conversational Italian", level: "B1", teacher: "Sig. Marco Rossi", schedule: "Fri 18:00", pricePerSession: 18, status: "archived" },
-  ];
-
-  const roster = [
-    ["s-01", "Amina Haddad", "+1 202 555 0114", "A1", 28, "g-spanish", "2026-01-12"],
-    ["s-02", "Youssef Barakat", "+1 202 555 0129", "A1", -14, "g-spanish", "2026-01-19"],
-    ["s-03", "Lea Mansour", "+1 202 555 0137", "A1", 0, "g-spanish", "2026-02-02"],
-    ["s-04", "Omar Chidiac", "+1 202 555 0142", "A1", 42, "g-spanish", "2026-02-14"],
-    ["s-05", "Priya Nair", "+1 202 555 0158", "A1", 14, "g-spanish", "2026-03-03"],
-    ["s-06", "Nour Fares", "+1 202 555 0163", "B2", -22, "g-business", "2026-01-27"],
-    ["s-07", "Rami Kassem", "+1 202 555 0171", "B2", 66, "g-business", "2026-02-09"],
-    ["s-08", "Dina Sleiman", "+1 202 555 0186", "B2", 0, "g-business", "2026-02-23"],
-    ["s-09", "Karim Ayoub", "+1 202 555 0194", "B2", 44, "g-business", "2026-03-16"],
-    ["s-10", "Elena Fischer", "+1 202 555 0208", "B2", -44, "g-business", "2026-04-06"],
-    ["s-11", "Maya Rizk", "+1 202 555 0215", "A1", 32, "g-french", "2026-01-30"],
-    ["s-12", "Hadi Nassar", "+1 202 555 0223", "A1", -16, "g-french", "2026-02-17"],
-    ["s-13", "Sara Khoury", "+1 202 555 0231", "A1", 48, "g-french", "2026-03-09"],
-    ["s-14", "Tomas Alvarez", "+1 202 555 0247", "A1", 0, "g-french", "2026-04-20"],
-    ["s-15", "Jing Wei Liu", "+1 202 555 0256", "B1", 18, "g-italian", "2026-01-08"],
-  ] as const;
-
-  const students: Student[] = roster.map(([id, name, phone, level, balance, , createdAt]) => ({
-    id,
-    name,
-    phone,
-    level,
-    balance,
-    createdAt,
-    email: `${name.toLowerCase().replace(/[^a-z]+/g, ".")}@example.com`,
-    guardianName: "",
-    guardianPhone: "",
-    address: "",
-    notes: "",
-  }));
-
-  const enrollments: Enrollment[] = roster.map(([id, , , , , groupId], i) => ({
-    id: `e-${String(i + 1).padStart(2, "0")}`,
-    studentId: id,
-    groupId,
-    status: "active",
-  }));
-  // A returning student also attends the evening business class.
-  enrollments.push({ id: "e-16", studentId: "s-11", groupId: "g-business", status: "active" });
-
-  const sessionDates: Record<string, string[]> = {
-    "g-spanish": ["2026-08-24", "2026-08-26", "2026-08-31", "2026-09-02", "2026-09-07"],
-    "g-business": ["2026-08-25", "2026-08-27", "2026-09-01", "2026-09-03", "2026-09-08"],
-    "g-french": ["2026-08-22", "2026-08-29", "2026-09-05"],
-  };
-
-  const attendance: AttendanceRecord[] = [];
-  let seq = 0;
-  for (const enrollment of enrollments) {
-    const group = groups.find((g) => g.id === enrollment.groupId);
-    const dates = sessionDates[enrollment.groupId];
-    if (!group || !dates) continue;
-    const offset = Number(enrollment.studentId.slice(-2));
-    dates.forEach((date, di) => {
-      seq += 1;
-      const present = (offset + di) % 5 !== 0;
-      const paid = present && (offset + di) % 3 !== 2;
-      attendance.push({
-        id: `a-${String(seq).padStart(4, "0")}`,
-        date,
-        groupId: group.id,
-        studentId: enrollment.studentId,
-        status: present ? "present" : "absent",
-        paid,
-        amount: paid ? group.pricePerSession : 0,
-      });
-    });
-  }
-
-  // Standalone top-up payments recorded at the front desk.
-  const topUps: [string, string, string, number][] = [
-    ["s-04", "g-spanish", "2026-08-23", 70],
-    ["s-07", "g-business", "2026-08-24", 110],
-    ["s-13", "g-french", "2026-08-30", 80],
-    ["s-01", "g-spanish", "2026-09-06", 56],
-  ];
-  topUps.forEach(([studentId, groupId, date, amount], i) => {
-    attendance.push({
-      id: `p-${String(i + 1).padStart(3, "0")}`,
-      date,
-      groupId,
-      studentId,
-      status: "absent",
-      paid: true,
-      amount,
-    });
-  });
-
-  return { groups, students, enrollments, attendance };
+/** Column 5 ("paid") is legacy; kept for sheet-layout compat, ignored on read. */
+function attendanceRow(a: AttendanceRecord): (string | number)[] {
+  return [a.id, a.date, a.groupId, a.studentId, a.status, "TRUE", a.amount];
 }
 
-const HEADERS: Record<string, string[]> = {
-  GROUPS: ["id", "name", "level", "teacher", "schedule", "price_per_session", "status"],
-  STUDENTS: [
-    "id",
-    "name",
-    "phone",
-    "level",
-    "balance",
-    "created_at",
-    "email",
-    "guardian_name",
-    "guardian_phone",
-    "address",
-    "notes",
-  ],
-  ENROLLMENTS: ["id", "student_id", "group_id", "status"],
-  ATTENDANCE: ["id", "date", "group_id", "student_id", "status", "paid", "amount"],
-};
-
-export async function seedDemoData(): Promise<LmsSnapshot> {
-  const store = sampleStore();
-  memoryStore = store;
-
-  if (sheetsConnected()) {
-    const cfg = sheetsConfig()!;
-    await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchClear`, {
-      method: "POST",
-      body: JSON.stringify({
-        ranges: ["GROUPS!A1:G20000", "STUDENTS!A1:K20000", "ENROLLMENTS!A1:D20000", "ATTENDANCE!A1:G20000"],
-      }),
-    });
-    await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchUpdate`, {
-      method: "POST",
-      body: JSON.stringify({
-        valueInputOption: "RAW",
-        data: [
-          { range: "GROUPS!A1", values: [HEADERS["GROUPS"]!, ...store.groups.map(groupRow)] },
-          { range: "STUDENTS!A1", values: [HEADERS["STUDENTS"]!, ...store.students.map(studentRow)] },
-          {
-            range: "ENROLLMENTS!A1",
-            values: [
-              HEADERS["ENROLLMENTS"]!,
-              ...store.enrollments.map((e) => [e.id, e.studentId, e.groupId, e.status]),
-            ],
-          },
-          {
-            range: "ATTENDANCE!A1",
-            values: [
-              HEADERS["ATTENDANCE"]!,
-              ...store.attendance.map((a) => [
-                a.id,
-                a.date,
-                a.groupId,
-                a.studentId,
-                a.status,
-                a.paid ? "TRUE" : "FALSE",
-                a.amount,
-              ]),
-            ],
-          },
-        ],
-      }),
-    });
-  }
-
-  return commit(store, sheetsConnected());
+function emptyStore(): Store {
+  return { groups: [], students: [], enrollments: [], attendance: [] };
 }
 
 function getMemoryStore(): Store {
-  if (!memoryStore) memoryStore = sampleStore();
+  if (!memoryStore) memoryStore = emptyStore();
   return memoryStore;
 }
 
@@ -328,18 +279,16 @@ export async function loadSnapshot(force = false): Promise<LmsSnapshot> {
 
   let snapshot: LmsSnapshot;
   if (sheetsConnected()) {
-    try {
-      snapshot = { ...(await readFromSheets()), source: "sheets" };
-    } catch {
-      snapshot = { ...getMemoryStore(), source: "sample" };
-    }
+    // Propagate read failures. Silently serving an empty store hid
+    // connectivity problems as data loss and would let subsequent writes
+    // persist a partial store over the real sheet.
+    snapshot = { ...(await readFromSheets()), source: "sheets" };
   } else {
     snapshot = { ...getMemoryStore(), source: "sample" };
   }
   cache = { snapshot, at: Date.now() };
   return snapshot;
 }
-
 
 function cloneStore(store: Store): Store {
   return {
@@ -350,20 +299,14 @@ function cloneStore(store: Store): Store {
   };
 }
 
-/** Reuse the cached rows instead of re-reading the spreadsheet on every write. */
 async function currentStore(): Promise<Store> {
   if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cloneStore(cache.snapshot);
   if (!sheetsConnected()) return getMemoryStore();
-  try {
-    const store = await readFromSheets();
-    cache = { snapshot: { ...cloneStore(store), source: "sheets" }, at: Date.now() };
-    return store;
-  } catch {
-    return getMemoryStore();
-  }
+  const store = await readFromSheets();
+  cache = { snapshot: { ...cloneStore(store), source: "sheets" }, at: Date.now() };
+  return store;
 }
 
-/** Apply the already-known result locally, so a write costs no extra read. */
 function commit(store: Store, synced: boolean): LmsSnapshot {
   const source: LmsSnapshot["source"] = synced && sheetsConnected() ? "sheets" : "sample";
   if (source === "sample") memoryStore = store;
@@ -376,6 +319,58 @@ function newId(prefix: string): string {
   return `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
 }
 
+async function replaceTabs(store: Store, tabs: readonly Tab[]): Promise<boolean> {
+  if (!sheetsConnected()) {
+    memoryStore = store;
+    return false;
+  }
+  const cfg = sheetsConfig()!;
+  const clearRanges: string[] = [];
+  const updates: { range: string; values: (string | number)[][] }[] = [];
+
+  if (tabs.includes("groups")) {
+    clearRanges.push("GROUPS!A2:H20000");
+    updates.push({ range: "GROUPS!A2", values: store.groups.map(groupRow) });
+  }
+  if (tabs.includes("students")) {
+    clearRanges.push("STUDENTS!A2:K20000");
+    updates.push({ range: "STUDENTS!A2", values: store.students.map(studentRow) });
+  }
+  if (tabs.includes("enrollments")) {
+    clearRanges.push("ENROLLMENTS!A2:D20000");
+    updates.push({
+      range: "ENROLLMENTS!A2",
+      values: store.enrollments.map((e) => [e.id, e.studentId, e.groupId, e.status]),
+    });
+  }
+  if (tabs.includes("attendance")) {
+    clearRanges.push("ATTENDANCE!A2:G20000");
+    updates.push({ range: "ATTENDANCE!A2", values: store.attendance.map(attendanceRow) });
+  }
+
+  try {
+    await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchClear`, {
+      method: "POST",
+      body: JSON.stringify({ ranges: clearRanges }),
+    });
+    await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchUpdate`, {
+      method: "POST",
+      body: JSON.stringify({
+        valueInputOption: "RAW",
+        data: updates.filter((d) => d.values.length > 0),
+      }),
+    });
+    return true;
+  } catch {
+    memoryStore = store;
+    return false;
+  }
+}
+
+function feeFor(status: AttendanceStatus, price: number): number {
+  return status === "cancelled" || status === "skipped" ? 0 : -price;
+}
+
 export async function saveRollCall(input: {
   groupId: string;
   date: string;
@@ -383,7 +378,18 @@ export async function saveRollCall(input: {
 }): Promise<LmsSnapshot> {
   const store = await currentStore();
   const group = store.groups.find((g) => g.id === input.groupId);
-  const price = group?.pricePerSession ?? 0;
+  const price = perSessionPrice(group);
+
+  const enrolled = store.enrollments
+    .filter((e) => e.groupId === input.groupId && e.status === "active")
+    .map((e) => e.studentId);
+  const marked = new Map(input.entries.map((e) => [e.studentId, e.status]));
+  const allEntries: RollCallEntry[] = [
+    ...input.entries,
+    ...enrolled
+      .filter((id) => !marked.has(id))
+      .map((id) => ({ studentId: id, status: "absent" as const })),
+  ];
 
   const prior = new Map<string, AttendanceRecord>();
   for (const record of store.attendance) {
@@ -392,27 +398,23 @@ export async function saveRollCall(input: {
     }
   }
 
-  const rows: AttendanceRecord[] = input.entries.map((entry) => ({
+  const rows: AttendanceRecord[] = allEntries.map((entry) => ({
     id: prior.get(entry.studentId)?.id ?? newId("a"),
     date: input.date,
     groupId: input.groupId,
     studentId: entry.studentId,
     status: entry.status,
-    paid: entry.paid,
-    amount: entry.paid ? price : 0,
+    amount: entry.status === "cancelled" || entry.status === "skipped" ? 0 : price,
   }));
 
-  const effect = (status: "present" | "absent", paid: boolean) =>
-    (status === "present" ? -price : 0) + (paid ? price : 0);
-
   const balanceDelta = new Map<string, number>();
-  for (const entry of input.entries) {
+  for (const entry of allEntries) {
     const before = prior.get(entry.studentId);
-    const previous = before ? effect(before.status, before.paid) : 0;
-    balanceDelta.set(entry.studentId, effect(entry.status, entry.paid) - previous);
+    const previous = before ? feeFor(before.status, price) : 0;
+    balanceDelta.set(entry.studentId, feeFor(entry.status, price) - previous);
   }
 
-  const touched = new Set(input.entries.map((e) => e.studentId));
+  const touched = new Set(allEntries.map((e) => e.studentId));
   store.attendance = [
     ...store.attendance.filter(
       (a) => !(a.date === input.date && a.groupId === input.groupId && touched.has(a.studentId)),
@@ -423,7 +425,76 @@ export async function saveRollCall(input: {
     balanceDelta.has(s.id) ? { ...s, balance: s.balance + (balanceDelta.get(s.id) ?? 0) } : s,
   );
 
-  return commit(store, await replaceAll(store));
+  return commit(store, await replaceTabs(store, ["students", "attendance"]));
+}
+
+export async function cancelSession(input: {
+  groupId: string;
+  date: string;
+}): Promise<LmsSnapshot> {
+  const store = await currentStore();
+  const studentIds = store.enrollments
+    .filter((e) => e.groupId === input.groupId && e.status === "active")
+    .map((e) => e.studentId);
+
+  return saveRollCall({
+    groupId: input.groupId,
+    date: input.date,
+    entries: studentIds.map((studentId) => ({ studentId, status: "cancelled" as const })),
+  });
+}
+
+export async function clearSession(input: {
+  groupId: string;
+  date: string;
+}): Promise<LmsSnapshot> {
+  const store = await currentStore();
+  const group = store.groups.find((g) => g.id === input.groupId);
+  const price = perSessionPrice(group);
+
+  const records = store.attendance.filter(
+    (a) => a.groupId === input.groupId && a.date === input.date,
+  );
+  if (records.length === 0) return commit(store, true);
+
+  const balanceDelta = new Map<string, number>();
+  for (const r of records) {
+    balanceDelta.set(r.studentId, (balanceDelta.get(r.studentId) ?? 0) - feeFor(r.status, price));
+  }
+
+  store.attendance = store.attendance.filter(
+    (a) => !(a.groupId === input.groupId && a.date === input.date),
+  );
+  store.students = store.students.map((s) =>
+    balanceDelta.has(s.id) ? { ...s, balance: s.balance + (balanceDelta.get(s.id) ?? 0) } : s,
+  );
+
+  return commit(store, await replaceTabs(store, ["students", "attendance"]));
+}
+
+export async function rescheduleSession(input: {
+  groupId: string;
+  fromDate: string;
+  toDate: string;
+}): Promise<LmsSnapshot> {
+  if (input.fromDate === input.toDate) return loadSnapshot();
+  const store = await currentStore();
+
+  const records = store.attendance.filter(
+    (a) => a.groupId === input.groupId && a.date === input.fromDate,
+  );
+
+  store.attendance = [
+    ...store.attendance.filter(
+      (a) => !(a.groupId === input.groupId && a.date === input.toDate),
+    ),
+    ...store.attendance.filter(
+      (a) => !(a.groupId === input.groupId && a.date === input.fromDate),
+    ),
+    ...records.map((r) => ({ ...r, date: input.toDate })),
+  ];
+
+  return commit(store, await replaceTabs(store, ["attendance"]));
 }
 
 export async function upsertGroup(
@@ -438,7 +509,7 @@ export async function upsertGroup(
   let synced = false;
   if (sheetsConnected()) {
     try {
-      await writeRange("GROUPS!A2:G500", store.groups.map(groupRow));
+      await writeRange("GROUPS!A2:H500", store.groups.map(groupRow));
       synced = true;
     } catch {
       /* fall back to memory */
@@ -465,15 +536,28 @@ export async function createStudent(input: {
   guardianPhone?: string | undefined;
   address?: string | undefined;
   notes?: string | undefined;
+  entranceFee?: number | undefined;
+  siblingIds?: string[] | undefined;
+  familyPaymentTotal?: number | undefined;
 }): Promise<LmsSnapshot> {
   const store = await currentStore();
+  const entranceFee = Math.max(0, input.entranceFee ?? 0);
+  const familyTotal = Math.max(0, input.familyPaymentTotal ?? 0);
+  const siblingIds = (input.siblingIds ?? []).filter((id) =>
+    store.students.some((s) => s.id === id),
+  );
+
+  const newIdValue = newId("s");
+  const familyMembers = familyTotal > 0 ? [newIdValue, ...siblingIds] : [];
+  const familyShare = familyMembers.length > 0 ? familyTotal / familyMembers.length : 0;
+
   const student: Student = {
-    id: newId("s"),
+    id: newIdValue,
     name: input.name,
     phone: input.phone,
     level: input.level,
-    balance: input.balance,
-    createdAt: new Date().toISOString().slice(0, 10),
+    balance: input.balance + entranceFee + familyShare,
+    createdAt: todayIso(),
     email: input.email ?? "",
     guardianName: input.guardianName ?? "",
     guardianPhone: input.guardianPhone ?? "",
@@ -481,6 +565,13 @@ export async function createStudent(input: {
     notes: input.notes ?? "",
   };
   store.students = [...store.students, student];
+
+  if (familyShare > 0 && siblingIds.length > 0) {
+    store.students = store.students.map((s) =>
+      siblingIds.includes(s.id) ? { ...s, balance: s.balance + familyShare } : s,
+    );
+  }
+
   const enrollment: Enrollment | undefined = input.groupId
     ? { id: newId("e"), studentId: student.id, groupId: input.groupId, status: "active" }
     : undefined;
@@ -490,6 +581,9 @@ export async function createStudent(input: {
   if (sheetsConnected()) {
     try {
       await appendRows("STUDENTS", [studentRow(student)]);
+      if (familyShare > 0 && siblingIds.length > 0) {
+        await writeRange("STUDENTS!A2:K2000", store.students.map(studentRow));
+      }
       if (enrollment)
         await appendRows("ENROLLMENTS", [
           [enrollment.id, enrollment.studentId, enrollment.groupId, enrollment.status],
@@ -502,65 +596,13 @@ export async function createStudent(input: {
   return commit(store, synced);
 }
 
-async function replaceAll(store: Store): Promise<boolean> {
-  if (!sheetsConnected()) {
-    memoryStore = store;
-    return false;
-  }
-  const cfg = sheetsConfig()!;
-  try {
-    await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchClear`, {
-      method: "POST",
-      body: JSON.stringify({
-        ranges: [
-          "GROUPS!A2:G20000",
-          "STUDENTS!A2:K20000",
-          "ENROLLMENTS!A2:D20000",
-          "ATTENDANCE!A2:G20000",
-        ],
-      }),
-    });
-    await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchUpdate`, {
-      method: "POST",
-      body: JSON.stringify({
-        valueInputOption: "RAW",
-        data: [
-          { range: "GROUPS!A2", values: store.groups.map(groupRow) },
-          { range: "STUDENTS!A2", values: store.students.map(studentRow) },
-          {
-            range: "ENROLLMENTS!A2",
-            values: store.enrollments.map((e) => [e.id, e.studentId, e.groupId, e.status]),
-          },
-          {
-            range: "ATTENDANCE!A2",
-            values: store.attendance.map((a) => [
-              a.id,
-              a.date,
-              a.groupId,
-              a.studentId,
-              a.status,
-              a.paid ? "TRUE" : "FALSE",
-              a.amount,
-            ]),
-          },
-        ].filter((d) => d.values.length > 0),
-      }),
-    });
-    return true;
-  } catch {
-    memoryStore = store;
-    return false;
-  }
-}
-
 export async function deleteGroup(id: string): Promise<LmsSnapshot> {
   const store = await currentStore();
   store.groups = store.groups.filter((g) => g.id !== id);
   store.enrollments = store.enrollments.filter((e) => e.groupId !== id);
   store.attendance = store.attendance.filter((a) => a.groupId !== id);
-  return commit(store, await replaceAll(store));
+  return commit(store, await replaceTabs(store, ["groups", "enrollments", "attendance"]));
 }
-
 
 export async function updateStudent(input: {
   id: string;
@@ -601,7 +643,7 @@ export async function updateStudent(input: {
       ];
     }
   }
-  return commit(store, await replaceAll(store));
+  return commit(store, await replaceTabs(store, ["students", "enrollments"]));
 }
 
 export async function deleteStudent(id: string): Promise<LmsSnapshot> {
@@ -609,7 +651,7 @@ export async function deleteStudent(id: string): Promise<LmsSnapshot> {
   store.students = store.students.filter((s) => s.id !== id);
   store.enrollments = store.enrollments.filter((e) => e.studentId !== id);
   store.attendance = store.attendance.filter((a) => a.studentId !== id);
-  return commit(store, await replaceAll(store));
+  return commit(store, await replaceTabs(store, ["students", "enrollments", "attendance"]));
 }
 
 export async function recordPayment(studentId: string, amount: number): Promise<LmsSnapshot> {
@@ -617,34 +659,9 @@ export async function recordPayment(studentId: string, amount: number): Promise<
   store.students = store.students.map((s) =>
     s.id === studentId ? { ...s, balance: s.balance + amount } : s,
   );
-  const enrollment = store.enrollments.find((e) => e.studentId === studentId);
-  const record: AttendanceRecord = {
-    id: newId("a"),
-    date: new Date().toISOString().slice(0, 10),
-    groupId: enrollment?.groupId ?? "",
-    studentId,
-    status: "absent",
-    paid: true,
-    amount,
-  };
-  store.attendance = [...store.attendance, record];
-
-  let synced = false;
-  if (sheetsConnected()) {
-    try {
-      await appendRows("ATTENDANCE", [
-        [record.id, record.date, record.groupId, record.studentId, "payment", "TRUE", record.amount],
-      ]);
-      await writeRange("STUDENTS!A2:K2000", store.students.map(studentRow));
-      synced = true;
-    } catch {
-      /* fall back to memory */
-    }
-  }
-  return commit(store, synced);
+  return commit(store, await replaceTabs(store, ["students"]));
 }
 
-/** Per-student timeline, served from the cached snapshot (no extra sheet read). */
 export async function studentHistory(studentId: string): Promise<{
   student: Student | undefined;
   records: AttendanceRecord[];

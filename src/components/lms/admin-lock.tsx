@@ -1,19 +1,28 @@
 import { Lock, LockOpen, Delete } from "lucide-react";
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
-const ADMIN_PIN = "1234";
+/** Prefer VITE_ADMIN_PIN in the environment; falls back to the legacy default
+ *  so nothing breaks on first deploy. Change it in .env before going live. */
+const ADMIN_PIN: string =
+  (import.meta.env["VITE_ADMIN_PIN"] as string | undefined) ?? "1234";
 
-const AdminContext = createContext<{ unlocked: boolean; setUnlocked: (v: boolean) => void }>({
+type AdminContextValue = {
+  unlocked: boolean;
+  setUnlocked: (v: boolean) => void;
+};
+
+const AdminContext = createContext<AdminContextValue>({
   unlocked: false,
   setUnlocked: () => {},
 });
 
 export function AdminProvider({ children }: { children: ReactNode }) {
   const [unlocked, setUnlocked] = useState(false);
-  return <AdminContext value={{ unlocked, setUnlocked }}>{children}</AdminContext>;
+  const value = useMemo<AdminContextValue>(() => ({ unlocked, setUnlocked }), [unlocked]);
+  return <AdminContext value={value}>{children}</AdminContext>;
 }
 
 export function useAdmin() {

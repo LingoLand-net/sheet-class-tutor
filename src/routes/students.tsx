@@ -1,18 +1,33 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Plus, Search, Wallet, CalendarCheck, CalendarX, Pencil, Trash2 } from "lucide-react";
+import {
+  CalendarCheck,
+  CalendarMinus,
+  CalendarX,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  Wallet,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { useAdmin } from "@/components/lms/admin-lock";
-import { AppShell, SampleBadge } from "@/components/lms/shell";
+import { AppShell } from "@/components/lms/shell";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { snapshotQuery } from "@/lib/lms-client";
 import { addPayment, editStudent, registerStudent, removeStudent } from "@/lib/lms.functions";
-import { formatMoney, type LmsSnapshot, type Student } from "@/lib/lms-types";
+import {
+  formatMoney,
+  type AttendanceStatus,
+  type Enrollment,
+  type LmsSnapshot,
+  type Student,
+} from "@/lib/lms-types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/students")({
@@ -37,6 +52,15 @@ export const Route = createFileRoute("/students")({
   component: StudentsPage,
 });
 
+function labelForStatus(status: AttendanceStatus): string {
+  switch (status) {
+    case "present":   return "Present";
+    case "absent":    return "Absent";
+    case "cancelled": return "Cancelled";
+    case "skipped":   return "Skipped";
+  }
+}
+
 function StudentsPage() {
   const { data } = useSuspenseQuery(snapshotQuery);
   const { unlocked } = useAdmin();
@@ -56,6 +80,11 @@ function StudentsPage() {
     balance: "0",
     groupId: "",
     email: "",
+    entranceFeeEnabled: false,
+    entranceFeeAmount: "50",
+    familyEnabled: false,
+    siblingIds: [] as string[],
+    familyPaymentTotal: "",
   });
   const [payAmount, setPayAmount] = useState("");
   const [editForm, setEditForm] = useState<{
@@ -77,9 +106,28 @@ function StudentsPage() {
     queryClient.setQueryData(snapshotQuery.queryKey, snapshot);
   };
 
+  const resetForm = () =>
+    setForm({
+      name: "",
+      phone: "",
+      level: "",
+      balance: "0",
+      groupId: "",
+      email: "",
+      entranceFeeEnabled: false,
+      entranceFeeAmount: "50",
+      familyEnabled: false,
+      siblingIds: [],
+      familyPaymentTotal: "",
+    });
+
   const registerMutation = useMutation({
-    mutationFn: () =>
-      register({
+    mutationFn: () => {
+      const entranceFee =
+        form.entranceFeeEnabled ? Math.max(0, Number(form.entranceFeeAmount) || 0) : 0;
+      const familyPaymentTotal =
+        form.familyEnabled ? Math.max(0, Number(form.familyPaymentTotal) || 0) : 0;
+      return register({
         data: {
           name: form.name,
           phone: form.phone,
@@ -87,12 +135,17 @@ function StudentsPage() {
           balance: Number(form.balance) || 0,
           email: form.email,
           ...(form.groupId ? { groupId: form.groupId } : {}),
+          ...(entranceFee > 0 ? { entranceFee } : {}),
+          ...(form.familyEnabled && familyPaymentTotal > 0
+            ? { siblingIds: form.siblingIds, familyPaymentTotal }
+            : {}),
         },
-      }),
+      });
+    },
     onSuccess: (snapshot: LmsSnapshot) => {
       onSuccess(snapshot);
       setOpenNew(false);
-      setForm({ name: "", phone: "", level: "", balance: "0", groupId: "", email: "" });
+      resetForm();
       toast.success("Student registered");
     },
     onError: () => toast.error("Could not register the student"),
@@ -144,10 +197,23 @@ function StudentsPage() {
     onError: () => toast.error("Could not delete the student"),
   });
 
+  const groupNameById = useMemo(
+    () => new Map(data.groups.map((g) => [g.id, g.name] as const)),
+    [data.groups],
+  );
+
+  const activeEnrollmentByStudent = useMemo(() => {
+    const map = new Map<string, Enrollment>();
+    for (const e of data.enrollments) {
+      if (e.status === "active") map.set(e.studentId, e);
+    }
+    return map;
+  }, [data.enrollments]);
+
+  const groupName = (id: string) => groupNameById.get(id) ?? "—";
+
   const openEdit = (student: Student) => {
-    const enrollment = data.enrollments.find(
-      (e) => e.studentId === student.id && e.status === "active",
-    );
+    const enrollment = activeEnrollmentByStudent.get(student.id);
     setEditForm({
       id: student.id,
       name: student.name,
@@ -163,39 +229,48 @@ function StudentsPage() {
     });
   };
 
-  const filtered = useMemo(
-    () =>
-      data.students.filter((s) => s.name.toLowerCase().includes(search.trim().toLowerCase())),
-    [data.students, search],
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return data.students;
+    return data.students.filter((s) => s.name.toLowerCase().includes(term));
+  }, [data.students, search]);
+
+  const selected = useMemo(
+    () => data.students.find((s) => s.id === selectedId) ?? null,
+    [data.students, selectedId],
   );
 
-  const selected = data.students.find((s) => s.id === selectedId) ?? null;
-  const timeline = selected
-    ? data.attendance
-        .filter((a) => a.studentId === selected.id)
-        .sort((a, b) => (a.date < b.date ? 1 : -1))
-    : [];
-  const attended = timeline.filter((a) => a.status === "present").length;
-  const sessions = timeline.filter((a) => a.status !== "absent" || !a.paid).length;
+  const { timeline, attended, sessionCount } = useMemo(() => {
+    if (!selected) {
+      return { timeline: [] as LmsSnapshot["attendance"], attended: 0, sessionCount: 0 };
+    }
+    const list = data.attendance
+      .filter((a) => a.studentId === selected.id)
+      .sort((a, b) => (a.date < b.date ? 1 : -1));
+    const present = list.filter((a) => a.status === "present").length;
+    const sessions = list.filter((a) => a.status !== "cancelled").length;
+    return { timeline: list, attended: present, sessionCount: sessions };
+  }, [data.attendance, selected]);
 
-  const groupName = (id: string) => data.groups.find((g) => g.id === id)?.name ?? "—";
+  const attendancePct =
+    sessionCount > 0 ? `${Math.round((attended / Math.max(sessionCount, 1)) * 100)}%` : "—";
 
   return (
     <AppShell
       title="Student Registry"
       subtitle={`${data.students.length} students`}
       actions={
-        <>
-          <SampleBadge source={data.source} />
-          <button
-            type="button"
-            disabled={!unlocked}
-            onClick={() => setOpenNew(true)}
-            className="flex min-h-12 items-center gap-2 rounded-2xl bg-primary px-5 font-semibold text-primary-foreground disabled:opacity-40"
-          >
-            <Plus className="size-5" /> Register
-          </button>
-        </>
+        <button
+          type="button"
+          disabled={!unlocked}
+          onClick={() => {
+            resetForm();
+            setOpenNew(true);
+          }}
+          className="flex min-h-12 items-center gap-2 rounded-2xl bg-primary px-5 font-semibold text-primary-foreground disabled:opacity-40"
+        >
+          <Plus className="size-5" /> Register
+        </button>
       }
     >
       <div className="relative mb-5">
@@ -208,69 +283,82 @@ function StudentsPage() {
         />
       </div>
 
-      <div className="grid gap-3 pb-8 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="flex flex-col gap-2 pb-8">
         {filtered.map((student) => {
-          const enrollment = data.enrollments.find(
-            (e) => e.studentId === student.id && e.status === "active",
-          );
+          const enrollment = activeEnrollmentByStudent.get(student.id);
+          const groupLabel = enrollment ? groupName(enrollment.groupId) : "No group";
+          const overdue = student.balance < 0;
+
           return (
             <div
               key={student.id}
-              className="rounded-3xl border border-border bg-card p-4"
+              className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card px-3 py-3 shadow-sm sm:px-4"
             >
               <button
                 type="button"
-                onClick={() => setSelectedId(student.id)}
-                className="flex w-full items-start justify-between gap-3 text-left"
+                onClick={() => {
+                  setPayAmount("");
+                  setSelectedId(student.id);
+                }}
+                className="flex min-w-0 flex-1 basis-48 flex-col text-left"
               >
-                <div className="min-w-0">
-                  <p className="truncate text-lg font-semibold text-foreground">{student.name}</p>
-                  <p className="truncate text-sm text-muted-foreground">
-                    {enrollment ? groupName(enrollment.groupId) : "No group"}
-                  </p>
-                </div>
-                <span
-                  className={cn(
-                    "rounded-full px-3 py-1 text-sm font-semibold",
-                    student.balance < 0
-                      ? "bg-destructive/10 text-destructive"
-                      : "bg-primary/10 text-primary",
-                  )}
-                >
-                  {formatMoney(student.balance)}
+                <span className="truncate text-base font-semibold text-foreground sm:text-lg">
+                  {student.name}
+                </span>
+                <span className="truncate text-xs text-muted-foreground sm:text-sm">
+                  {groupLabel}
+                  {student.level ? ` · ${student.level}` : ""}
                 </span>
               </button>
 
-              <div className="mt-4 grid grid-cols-2 gap-2">
+              <span
+                className={cn(
+                  "shrink-0 rounded-full px-3 py-1 text-sm font-semibold tabular-nums",
+                  overdue
+                    ? "bg-destructive/10 text-destructive"
+                    : "bg-primary/10 text-primary",
+                )}
+              >
+                {formatMoney(student.balance)}
+              </span>
+
+              <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
                   disabled={!unlocked}
                   onClick={() => openEdit(student)}
-                  className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-secondary font-semibold text-secondary-foreground disabled:opacity-40"
+                  aria-label={`Edit ${student.name}`}
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-secondary px-3 font-semibold text-secondary-foreground disabled:opacity-40"
                 >
-                  <Pencil className="size-5" /> Edit
+                  <Pencil className="size-5" />
+                  <span className="hidden sm:inline">Edit</span>
                 </button>
                 <button
                   type="button"
                   disabled={!unlocked || deleteMutation.isPending}
                   onClick={() => setPendingDelete(student)}
-                  className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-destructive/10 font-semibold text-destructive disabled:opacity-40"
+                  aria-label={`Delete ${student.name}`}
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-destructive/10 px-3 font-semibold text-destructive disabled:opacity-40"
                 >
-                  <Trash2 className="size-5" /> Delete
+                  <Trash2 className="size-5" />
+                  <span className="hidden sm:inline">Delete</span>
                 </button>
               </div>
             </div>
           );
         })}
+
         {filtered.length === 0 ? (
-          <p className="text-muted-foreground">
-            No students yet. Unlock with the padlock and tap Register to add one.
+          <p className="rounded-2xl border border-dashed border-border px-4 py-6 text-muted-foreground">
+            {search.trim()
+              ? "No student matches that name."
+              : "No students yet. Unlock with the padlock and tap Register to add one."}
           </p>
         ) : null}
       </div>
 
       <Dialog open={openNew} onOpenChange={setOpenNew}>
-        <DialogContent className="max-w-lg rounded-3xl">
+        <DialogContent className="max-h-[92dvh] max-w-lg overflow-y-auto rounded-3xl">
           <DialogHeader>
             <DialogTitle className="text-xl">Register student</DialogTitle>
           </DialogHeader>
@@ -315,6 +403,111 @@ function StudentsPage() {
                 onChange={(e) => setForm({ ...form, balance: e.target.value })}
               />
             </Field>
+
+            <div className="rounded-2xl border border-border p-3">
+              <label className="flex cursor-pointer items-center gap-3">
+                <input
+                  type="checkbox"
+                  className="size-5"
+                  checked={form.entranceFeeEnabled}
+                  onChange={(e) =>
+                    setForm({ ...form, entranceFeeEnabled: e.target.checked })
+                  }
+                />
+                <span className="text-sm font-semibold text-foreground">
+                  Entrance fee paid
+                </span>
+              </label>
+              {form.entranceFeeEnabled ? (
+                <div className="mt-3 grid gap-2">
+                  <Label className="text-xs font-semibold text-muted-foreground">
+                    Amount
+                  </Label>
+                  <Input
+                    className="h-11 text-base"
+                    inputMode="decimal"
+                    value={form.entranceFeeAmount}
+                    onChange={(e) =>
+                      setForm({ ...form, entranceFeeAmount: e.target.value })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Credited to starting balance.
+                  </p>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-2xl border border-border p-3">
+              <label className="flex cursor-pointer items-center gap-3">
+                <input
+                  type="checkbox"
+                  className="size-5"
+                  checked={form.familyEnabled}
+                  onChange={(e) => setForm({ ...form, familyEnabled: e.target.checked })}
+                />
+                <span className="text-sm font-semibold text-foreground">
+                  Family / sibling payment
+                </span>
+              </label>
+              {form.familyEnabled ? (
+                <div className="mt-3 grid gap-3">
+                  <div>
+                    <Label className="text-xs font-semibold text-muted-foreground">
+                      Siblings in system (optional)
+                    </Label>
+                    <div className="mt-2 max-h-40 overflow-y-auto rounded-xl border border-border">
+                      {data.students.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-muted-foreground">
+                          No existing students.
+                        </p>
+                      ) : (
+                        data.students.map((s) => (
+                          <label
+                            key={s.id}
+                            className="flex cursor-pointer items-center gap-3 border-b border-border px-3 py-2 last:border-b-0"
+                          >
+                            <input
+                              type="checkbox"
+                              className="size-4"
+                              checked={form.siblingIds.includes(s.id)}
+                              onChange={(e) =>
+                                setForm({
+                                  ...form,
+                                  siblingIds: e.target.checked
+                                    ? [...form.siblingIds, s.id]
+                                    : form.siblingIds.filter((id) => id !== s.id),
+                                })
+                              }
+                            />
+                            <span className="text-sm">{s.name}</span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label className="text-xs font-semibold text-muted-foreground">
+                      Total paid by parent
+                    </Label>
+                    <Input
+                      className="h-11 text-base"
+                      inputMode="decimal"
+                      placeholder="e.g. 300"
+                      value={form.familyPaymentTotal}
+                      onChange={(e) =>
+                        setForm({ ...form, familyPaymentTotal: e.target.value })
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Split equally across {form.siblingIds.length + 1}{" "}
+                      {form.siblingIds.length + 1 === 1 ? "student" : "students"}.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
             <Field label="Group">
               <div className="flex flex-wrap gap-2">
                 {data.groups
@@ -338,6 +531,7 @@ function StudentsPage() {
                   ))}
               </div>
             </Field>
+
             <button
               type="button"
               disabled={!form.name || registerMutation.isPending}
@@ -359,12 +553,7 @@ function StudentsPage() {
             <div className="grid gap-4">
               <div className="grid grid-cols-2 gap-3">
                 <Stat label="Balance" value={formatMoney(selected.balance)} />
-                <Stat
-                  label="Attendance"
-                  value={
-                    sessions > 0 ? `${Math.round((attended / Math.max(sessions, 1)) * 100)}%` : "—"
-                  }
-                />
+                <Stat label="Attendance" value={attendancePct} />
               </div>
 
               <div className="flex gap-2">
@@ -399,19 +588,21 @@ function StudentsPage() {
                     className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3"
                   >
                     {entry.status === "present" ? (
-                      <CalendarCheck className="size-5 text-primary" />
+                      <CalendarCheck className="size-5 text-brand-orange" />
+                    ) : entry.status === "absent" ? (
+                      <CalendarX className="size-5 text-destructive" />
                     ) : (
-                      <CalendarX className="size-5 text-muted-foreground" />
+                      <CalendarMinus className="size-5 text-muted-foreground" />
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-foreground">{entry.date}</p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {groupName(entry.groupId)} · {entry.status}
+                        {groupName(entry.groupId)} · {labelForStatus(entry.status)}
                       </p>
                     </div>
-                    {entry.paid ? (
-                      <span className="rounded-full bg-primary/10 px-3 py-1 text-sm font-semibold text-primary">
-                        +{formatMoney(entry.amount)}
+                    {entry.status !== "cancelled" ? (
+                      <span className="rounded-full bg-muted px-3 py-1 text-sm font-semibold text-muted-foreground">
+                        {formatMoney(entry.amount)}
                       </span>
                     ) : null}
                   </div>
@@ -426,9 +617,7 @@ function StudentsPage() {
       </Dialog>
 
       <Dialog open={editForm !== null} onOpenChange={(open) => !open && setEditForm(null)}>
-        <DialogContent
-          className="top-0 left-0 h-[100dvh] content-start w-screen max-w-none translate-x-0 translate-y-0 overflow-y-auto rounded-none border-0 p-6 sm:max-w-none"
-        >
+        <DialogContent className="top-0 left-0 h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 content-start overflow-y-auto rounded-none border-0 p-6 sm:max-w-none sm:rounded-none">
           <DialogHeader>
             <DialogTitle className="text-2xl">Edit student</DialogTitle>
           </DialogHeader>

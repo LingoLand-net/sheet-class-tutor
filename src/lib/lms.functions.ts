@@ -3,15 +3,14 @@ import { z } from "zod";
 
 import type { LmsSnapshot } from "./lms-types";
 
-export const getSnapshot = createServerFn({ method: "GET" }).handler(async (): Promise<LmsSnapshot> => {
-  const { loadSnapshot } = await import("./sheets.server");
-  return loadSnapshot();
-});
+export const getSnapshot = createServerFn({ method: "GET" }).handler(
+  async (): Promise<LmsSnapshot> => {
+    const { loadSnapshot } = await import("./sheets.server");
+    return loadSnapshot();
+  },
+);
 
-export const seedDemo = createServerFn({ method: "POST" }).handler(async (): Promise<LmsSnapshot> => {
-  const { seedDemoData } = await import("./sheets.server");
-  return seedDemoData();
-});
+const statusEnum = z.enum(["present", "absent", "cancelled", "skipped"]);
 
 const rollCallSchema = z.object({
   groupId: z.string().min(1),
@@ -19,8 +18,7 @@ const rollCallSchema = z.object({
   entries: z.array(
     z.object({
       studentId: z.string().min(1),
-      status: z.enum(["present", "absent"]),
-      paid: z.boolean(),
+      status: statusEnum,
     }),
   ),
 });
@@ -32,13 +30,47 @@ export const submitRollCall = createServerFn({ method: "POST" })
     return saveRollCall(data);
   });
 
+export const cancelRollCallSession = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({ groupId: z.string().min(1), date: z.string().min(1) }).parse(input),
+  )
+  .handler(async ({ data }): Promise<LmsSnapshot> => {
+    const { cancelSession } = await import("./sheets.server");
+    return cancelSession(data);
+  });
+
+export const clearRollCallSession = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({ groupId: z.string().min(1), date: z.string().min(1) }).parse(input),
+  )
+  .handler(async ({ data }): Promise<LmsSnapshot> => {
+    const { clearSession } = await import("./sheets.server");
+    return clearSession(data);
+  });
+
+export const rescheduleRollCallSession = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        groupId: z.string().min(1),
+        fromDate: z.string().min(1),
+        toDate: z.string().min(1),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }): Promise<LmsSnapshot> => {
+    const { rescheduleSession } = await import("./sheets.server");
+    return rescheduleSession(data);
+  });
+
 const groupSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1),
   level: z.string().min(1),
   teacher: z.string().min(1),
   schedule: z.string().min(1),
-  pricePerSession: z.number().min(0),
+  pricePerMonth: z.number().min(0),
+  sessionsPerMonth: z.number().min(1),
   status: z.enum(["active", "archived"]),
 });
 
@@ -72,6 +104,9 @@ export const registerStudent = createServerFn({ method: "POST" })
         guardianPhone: z.string().default(""),
         address: z.string().default(""),
         notes: z.string().default(""),
+        entranceFee: z.number().min(0).optional(),
+        siblingIds: z.array(z.string()).optional(),
+        familyPaymentTotal: z.number().min(0).optional(),
       })
       .parse(input),
   )
