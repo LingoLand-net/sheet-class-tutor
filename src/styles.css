@@ -55,6 +55,8 @@
   --color-present-foreground: var(--present-foreground);
   --color-paid: var(--paid);
   --color-paid-foreground: var(--paid-foreground);
+  --color-sage: var(--sage);
+  --color-sage-foreground: var(--sage-foreground);
   --color-brand-orange: var(--brand-orange);
   --color-brand-orange-foreground: var(--brand-orange-foreground);
   --color-sidebar: var(--sidebar);
@@ -97,6 +99,8 @@
   --present-foreground: oklch(0.25 0.05 88);
   --paid: oklch(0.62 0.15 150);
   --paid-foreground: oklch(0.99 0.01 150);
+  --sage: oklch(0.72 0.05 165);
+  --sage-foreground: oklch(0.22 0.03 165);
   --brand-orange: oklch(0.7 0.2 43);
   --brand-orange-foreground: oklch(1 0 0);
   --sidebar: oklch(0.984 0.003 247.858);
@@ -138,6 +142,8 @@
   --present-foreground: oklch(0.22 0.05 88);
   --paid: oklch(0.68 0.15 150);
   --paid-foreground: oklch(0.18 0.03 150);
+  --sage: oklch(0.66 0.05 165);
+  --sage-foreground: oklch(0.15 0.02 165);
   --brand-orange: oklch(0.74 0.18 43);
   --brand-orange-foreground: oklch(0.17 0.02 43);
   --sidebar: oklch(0.208 0.042 265.755);
