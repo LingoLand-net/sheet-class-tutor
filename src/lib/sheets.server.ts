@@ -632,18 +632,31 @@ export async function recordPayment(studentId: string, amount: number): Promise<
   };
   store.attendance = [...store.attendance, record];
 
+  let synced = false;
   if (sheetsConnected()) {
     try {
       await appendRows("ATTENDANCE", [
         [record.id, record.date, record.groupId, record.studentId, "payment", "TRUE", record.amount],
       ]);
       await writeRange("STUDENTS!A2:K2000", store.students.map(studentRow));
+      synced = true;
     } catch {
       /* fall back to memory */
     }
-  } else {
-    memoryStore = store;
   }
-  invalidate();
-  return loadSnapshot(true);
+  return commit(store, synced);
+}
+
+/** Per-student timeline, served from the cached snapshot (no extra sheet read). */
+export async function studentHistory(studentId: string): Promise<{
+  student: Student | undefined;
+  records: AttendanceRecord[];
+}> {
+  const snapshot = await loadSnapshot();
+  return {
+    student: snapshot.students.find((s) => s.id === studentId),
+    records: snapshot.attendance
+      .filter((a) => a.studentId === studentId)
+      .sort((a, b) => b.date.localeCompare(a.date)),
+  };
 }
