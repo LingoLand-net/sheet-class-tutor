@@ -340,9 +340,6 @@ export async function loadSnapshot(force = false): Promise<LmsSnapshot> {
   return snapshot;
 }
 
-function invalidate() {
-  cache = undefined;
-}
 
 function cloneStore(store: Store): Store {
   return {
