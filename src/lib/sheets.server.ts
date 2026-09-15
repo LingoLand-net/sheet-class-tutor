@@ -8,7 +8,7 @@ import type {
 } from "./lms-types";
 
 const GATEWAY_URL = "https://connector-gateway.lovable.dev/google_sheets/v4";
-const CACHE_TTL_MS = 30_000;
+const CACHE_TTL_MS = 300_000;
 
 type Store = {
   groups: Group[];
@@ -315,8 +315,7 @@ export async function seedDemoData(): Promise<LmsSnapshot> {
     });
   }
 
-  invalidate();
-  return loadSnapshot(true);
+  return commit(store, sheetsConnected());
 }
 
 function getMemoryStore(): Store {
@@ -341,17 +340,36 @@ export async function loadSnapshot(force = false): Promise<LmsSnapshot> {
   return snapshot;
 }
 
-function invalidate() {
-  cache = undefined;
+
+function cloneStore(store: Store): Store {
+  return {
+    groups: [...store.groups],
+    students: [...store.students],
+    enrollments: [...store.enrollments],
+    attendance: [...store.attendance],
+  };
 }
 
+/** Reuse the cached rows instead of re-reading the spreadsheet on every write. */
 async function currentStore(): Promise<Store> {
+  if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cloneStore(cache.snapshot);
   if (!sheetsConnected()) return getMemoryStore();
   try {
-    return await readFromSheets();
+    const store = await readFromSheets();
+    cache = { snapshot: { ...cloneStore(store), source: "sheets" }, at: Date.now() };
+    return store;
   } catch {
     return getMemoryStore();
   }
+}
+
+/** Apply the already-known result locally, so a write costs no extra read. */
+function commit(store: Store, synced: boolean): LmsSnapshot {
+  const source: LmsSnapshot["source"] = synced && sheetsConnected() ? "sheets" : "sample";
+  if (source === "sample") memoryStore = store;
+  const snapshot: LmsSnapshot = { ...cloneStore(store), source };
+  cache = { snapshot, at: Date.now() };
+  return snapshot;
 }
 
 function newId(prefix: string): string {
@@ -405,9 +423,7 @@ export async function saveRollCall(input: {
     balanceDelta.has(s.id) ? { ...s, balance: s.balance + (balanceDelta.get(s.id) ?? 0) } : s,
   );
 
-  await replaceAll(store);
-  invalidate();
-  return loadSnapshot(true);
+  return commit(store, await replaceAll(store));
 }
 
 export async function upsertGroup(
@@ -419,23 +435,22 @@ export async function upsertGroup(
   } else {
     store.groups = [...store.groups, { ...group, id: newId("g") } as Group];
   }
+  let synced = false;
   if (sheetsConnected()) {
     try {
       await writeRange("GROUPS!A2:G500", store.groups.map(groupRow));
+      synced = true;
     } catch {
       /* fall back to memory */
     }
-  } else {
-    memoryStore = store;
   }
-  invalidate();
-  return loadSnapshot(true);
+  return commit(store, synced);
 }
 
 export async function setGroupStatus(id: string, status: Group["status"]): Promise<LmsSnapshot> {
   const store = await currentStore();
   const group = store.groups.find((g) => g.id === id);
-  if (!group) return loadSnapshot(true);
+  if (!group) return loadSnapshot();
   return upsertGroup({ ...group, status });
 }
 
@@ -471,6 +486,7 @@ export async function createStudent(input: {
     : undefined;
   if (enrollment) store.enrollments = [...store.enrollments, enrollment];
 
+  let synced = false;
   if (sheetsConnected()) {
     try {
       await appendRows("STUDENTS", [studentRow(student)]);
@@ -478,20 +494,18 @@ export async function createStudent(input: {
         await appendRows("ENROLLMENTS", [
           [enrollment.id, enrollment.studentId, enrollment.groupId, enrollment.status],
         ]);
+      synced = true;
     } catch {
       /* fall back to memory */
     }
-  } else {
-    memoryStore = store;
   }
-  invalidate();
-  return loadSnapshot(true);
+  return commit(store, synced);
 }
 
-async function replaceAll(store: Store): Promise<void> {
+async function replaceAll(store: Store): Promise<boolean> {
   if (!sheetsConnected()) {
     memoryStore = store;
-    return;
+    return false;
   }
   const cfg = sheetsConfig()!;
   try {
@@ -532,8 +546,10 @@ async function replaceAll(store: Store): Promise<void> {
         ].filter((d) => d.values.length > 0),
       }),
     });
+    return true;
   } catch {
     memoryStore = store;
+    return false;
   }
 }
 
@@ -542,10 +558,9 @@ export async function deleteGroup(id: string): Promise<LmsSnapshot> {
   store.groups = store.groups.filter((g) => g.id !== id);
   store.enrollments = store.enrollments.filter((e) => e.groupId !== id);
   store.attendance = store.attendance.filter((a) => a.groupId !== id);
-  await replaceAll(store);
-  invalidate();
-  return loadSnapshot(true);
+  return commit(store, await replaceAll(store));
 }
+
 
 export async function updateStudent(input: {
   id: string;
@@ -586,9 +601,7 @@ export async function updateStudent(input: {
       ];
     }
   }
-  await replaceAll(store);
-  invalidate();
-  return loadSnapshot(true);
+  return commit(store, await replaceAll(store));
 }
 
 export async function deleteStudent(id: string): Promise<LmsSnapshot> {
@@ -596,9 +609,7 @@ export async function deleteStudent(id: string): Promise<LmsSnapshot> {
   store.students = store.students.filter((s) => s.id !== id);
   store.enrollments = store.enrollments.filter((e) => e.studentId !== id);
   store.attendance = store.attendance.filter((a) => a.studentId !== id);
-  await replaceAll(store);
-  invalidate();
-  return loadSnapshot(true);
+  return commit(store, await replaceAll(store));
 }
 
 export async function recordPayment(studentId: string, amount: number): Promise<LmsSnapshot> {
@@ -618,18 +629,31 @@ export async function recordPayment(studentId: string, amount: number): Promise<
   };
   store.attendance = [...store.attendance, record];
 
+  let synced = false;
   if (sheetsConnected()) {
     try {
       await appendRows("ATTENDANCE", [
         [record.id, record.date, record.groupId, record.studentId, "payment", "TRUE", record.amount],
       ]);
       await writeRange("STUDENTS!A2:K2000", store.students.map(studentRow));
+      synced = true;
     } catch {
       /* fall back to memory */
     }
-  } else {
-    memoryStore = store;
   }
-  invalidate();
-  return loadSnapshot(true);
+  return commit(store, synced);
+}
+
+/** Per-student timeline, served from the cached snapshot (no extra sheet read). */
+export async function studentHistory(studentId: string): Promise<{
+  student: Student | undefined;
+  records: AttendanceRecord[];
+}> {
+  const snapshot = await loadSnapshot();
+  return {
+    student: snapshot.students.find((s) => s.id === studentId),
+    records: snapshot.attendance
+      .filter((a) => a.studentId === studentId)
+      .sort((a, b) => b.date.localeCompare(a.date)),
+  };
 }

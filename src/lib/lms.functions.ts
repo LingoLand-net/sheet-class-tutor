@@ -117,6 +117,13 @@ export const removeStudent = createServerFn({ method: "POST" })
     return deleteStudent(data.id);
   });
 
+export const getStudentHistory = createServerFn({ method: "GET" })
+  .inputValidator((input: unknown) => z.object({ studentId: z.string().min(1) }).parse(input))
+  .handler(async ({ data }) => {
+    const { studentHistory } = await import("./sheets.server");
+    return studentHistory(data.studentId);
+  });
+
 export const addPayment = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z.object({ studentId: z.string().min(1), amount: z.number() }).parse(input),

@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -14,9 +14,15 @@ import { toast } from "sonner";
 
 import { useAdmin } from "@/components/lms/admin-lock";
 import { AppShell, SampleBadge } from "@/components/lms/shell";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { snapshotQuery } from "@/lib/lms-client";
-import { submitRollCall } from "@/lib/lms.functions";
+import { getStudentHistory, submitRollCall } from "@/lib/lms.functions";
 import { formatMoney, todayIso, type LmsSnapshot, type RollCallEntry } from "@/lib/lms-types";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +63,7 @@ function RollCallPage() {
   const [search, setSearch] = useState("");
   const [boxCount, setBoxCount] = useState<number>(4);
   const [sessionDate, setSessionDate] = useState<string | null>(null);
+  const [historyStudent, setHistoryStudent] = useState<{ id: string; name: string } | null>(null);
 
   const group = data.groups.find((g) => g.id === groupId);
 
@@ -290,19 +297,20 @@ function RollCallPage() {
 
       <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-semibold text-muted-foreground">
         <span className="flex items-center gap-2">
-          <span className="size-4 rounded-md bg-present" /> Present
+          <span className="size-4 rounded-md bg-brand-orange" /> Present (top row)
         </span>
         <span className="flex items-center gap-2">
-          <span className="size-4 rounded-md bg-destructive" /> Absent / unpaid
+          <span className="size-4 rounded-md bg-sage" /> Absent (top) · Paid (bottom)
         </span>
         <span className="flex items-center gap-2">
-          <span className="size-4 rounded-md bg-paid" /> Paid
+          <span className="size-4 rounded-md bg-destructive" /> Unpaid (bottom row)
         </span>
         <span className="flex items-center gap-2">
           <span className="size-4 rounded-md bg-muted" /> Nothing recorded
         </span>
-        <span>Tap the last box in a row to set today&apos;s session.</span>
+        <span>Top row is attendance, bottom row is payment.</span>
       </div>
+
 
       <div className="grid gap-3 pb-28 sm:grid-cols-2 xl:grid-cols-3">
         {students.map((student) => {
@@ -321,16 +329,13 @@ function RollCallPage() {
                   <p className="truncate text-lg font-semibold text-foreground">{student.name}</p>
                   <p className="text-sm text-muted-foreground">{student.level}</p>
                 </div>
-                <span
-                  className={cn(
-                    "rounded-full px-3 py-1 text-sm font-semibold",
-                    student.balance < 0
-                      ? "bg-destructive/10 text-destructive"
-                      : "bg-primary/10 text-primary",
-                  )}
+                <button
+                  type="button"
+                  onClick={() => setHistoryStudent({ id: student.id, name: student.name })}
+                  className="min-h-11 shrink-0 rounded-full bg-secondary px-4 text-sm font-semibold text-secondary-foreground"
                 >
-                  {formatMoney(student.balance)}
-                </span>
+                  Show
+                </button>
               </div>
 
               <BoxRow
@@ -343,7 +348,7 @@ function RollCallPage() {
                   const value =
                     date === activeDate ? current : recordFor(student.id, date) ?? null;
                   if (!value) return "bg-muted";
-                  return value.status === "present" ? "bg-present" : "bg-destructive";
+                  return value.status === "present" ? "bg-brand-orange" : "bg-sage";
                 }}
               />
 
@@ -359,7 +364,7 @@ function RollCallPage() {
                   const value =
                     date === activeDate ? current : recordFor(student.id, date) ?? null;
                   if (!value) return "bg-muted";
-                  return value.paid ? "bg-paid" : "bg-destructive";
+                  return value.paid ? "bg-sage" : "bg-destructive";
                 }}
               />
             </div>
@@ -391,9 +396,89 @@ function RollCallPage() {
           </button>
         </div>
       ) : null}
+
+      <StudentHistoryDialog
+        student={historyStudent}
+        onClose={() => setHistoryStudent(null)}
+      />
     </AppShell>
   );
 }
+
+function StudentHistoryDialog({
+  student,
+  onClose,
+}: {
+  student: { id: string; name: string } | null;
+  onClose: () => void;
+}) {
+  const fetchHistory = useServerFn(getStudentHistory);
+  const history = useQuery({
+    queryKey: ["student-history", student?.id],
+    queryFn: () => fetchHistory({ data: { studentId: student!.id } }),
+    enabled: Boolean(student),
+    staleTime: 60_000,
+  });
+
+  return (
+    <Dialog open={Boolean(student)} onOpenChange={(open) => (open ? null : onClose())}>
+      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{student?.name ?? "Student"}</DialogTitle>
+        </DialogHeader>
+
+        {history.isPending ? (
+          <p className="text-muted-foreground">Loading history…</p>
+        ) : history.isError ? (
+          <p className="text-destructive">Could not load this student&apos;s history.</p>
+        ) : (
+          <div className="space-y-3">
+            <p className="rounded-2xl bg-secondary px-4 py-3 font-semibold text-secondary-foreground">
+              Balance: {formatMoney(history.data?.student?.balance ?? 0)}
+            </p>
+            {(history.data?.records.length ?? 0) === 0 ? (
+              <p className="text-muted-foreground">No sessions recorded yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {history.data?.records.map((record) => (
+                  <li
+                    key={record.id}
+                    className="flex items-center justify-between gap-3 rounded-2xl border border-border px-4 py-3"
+                  >
+                    <span className="font-semibold text-foreground">{record.date}</span>
+                    <span className="flex items-center gap-2 text-sm font-semibold">
+                      <span
+                        className={cn(
+                          "rounded-full px-3 py-1",
+                          record.status === "present"
+                            ? "bg-brand-orange/15 text-brand-orange"
+                            : "bg-sage/20 text-foreground",
+                        )}
+                      >
+                        {record.status === "present" ? "Present" : "Absent"}
+                      </span>
+                      <span
+                        className={cn(
+                          "rounded-full px-3 py-1",
+                          record.paid
+                            ? "bg-sage/20 text-foreground"
+                            : "bg-destructive/10 text-destructive",
+                        )}
+                      >
+                        {record.paid ? `Paid ${formatMoney(record.amount)}` : "Unpaid"}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 
 function BoxRow({
   label,
@@ -411,10 +496,7 @@ function BoxRow({
   onToggle: () => void;
 }) {
   return (
-    <div className="mt-3">
-      <p className="mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-        {label}
-      </p>
+    <div className="mt-2">
       <div className="flex gap-1.5">
         {dates.map((date, i) => {
           const editable = date === activeDate && !disabled;
