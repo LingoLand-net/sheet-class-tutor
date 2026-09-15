@@ -63,6 +63,7 @@ function RollCallPage() {
   const [search, setSearch] = useState("");
   const [boxCount, setBoxCount] = useState<number>(4);
   const [sessionDate, setSessionDate] = useState<string | null>(null);
+  const [historyStudent, setHistoryStudent] = useState<{ id: string; name: string } | null>(null);
 
   const group = data.groups.find((g) => g.id === groupId);
 
