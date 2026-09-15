@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -14,9 +14,15 @@ import { toast } from "sonner";
 
 import { useAdmin } from "@/components/lms/admin-lock";
 import { AppShell, SampleBadge } from "@/components/lms/shell";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { snapshotQuery } from "@/lib/lms-client";
-import { submitRollCall } from "@/lib/lms.functions";
+import { getStudentHistory, submitRollCall } from "@/lib/lms.functions";
 import { formatMoney, todayIso, type LmsSnapshot, type RollCallEntry } from "@/lib/lms-types";
 import { cn } from "@/lib/utils";
 
