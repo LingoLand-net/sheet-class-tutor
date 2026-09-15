@@ -549,8 +549,10 @@ async function replaceAll(store: Store): Promise<boolean> {
         ].filter((d) => d.values.length > 0),
       }),
     });
+    return true;
   } catch {
     memoryStore = store;
+    return false;
   }
 }
 
