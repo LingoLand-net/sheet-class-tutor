@@ -396,9 +396,89 @@ function RollCallPage() {
           </button>
         </div>
       ) : null}
+
+      <StudentHistoryDialog
+        student={historyStudent}
+        onClose={() => setHistoryStudent(null)}
+      />
     </AppShell>
   );
 }
+
+function StudentHistoryDialog({
+  student,
+  onClose,
+}: {
+  student: { id: string; name: string } | null;
+  onClose: () => void;
+}) {
+  const fetchHistory = useServerFn(getStudentHistory);
+  const history = useQuery({
+    queryKey: ["student-history", student?.id],
+    queryFn: () => fetchHistory({ data: { studentId: student!.id } }),
+    enabled: Boolean(student),
+    staleTime: 60_000,
+  });
+
+  return (
+    <Dialog open={Boolean(student)} onOpenChange={(open) => (open ? null : onClose())}>
+      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{student?.name ?? "Student"}</DialogTitle>
+        </DialogHeader>
+
+        {history.isPending ? (
+          <p className="text-muted-foreground">Loading history…</p>
+        ) : history.isError ? (
+          <p className="text-destructive">Could not load this student&apos;s history.</p>
+        ) : (
+          <div className="space-y-3">
+            <p className="rounded-2xl bg-secondary px-4 py-3 font-semibold text-secondary-foreground">
+              Balance: {formatMoney(history.data?.student?.balance ?? 0)}
+            </p>
+            {(history.data?.records.length ?? 0) === 0 ? (
+              <p className="text-muted-foreground">No sessions recorded yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {history.data?.records.map((record) => (
+                  <li
+                    key={record.id}
+                    className="flex items-center justify-between gap-3 rounded-2xl border border-border px-4 py-3"
+                  >
+                    <span className="font-semibold text-foreground">{record.date}</span>
+                    <span className="flex items-center gap-2 text-sm font-semibold">
+                      <span
+                        className={cn(
+                          "rounded-full px-3 py-1",
+                          record.status === "present"
+                            ? "bg-brand-orange/15 text-brand-orange"
+                            : "bg-sage/20 text-foreground",
+                        )}
+                      >
+                        {record.status === "present" ? "Present" : "Absent"}
+                      </span>
+                      <span
+                        className={cn(
+                          "rounded-full px-3 py-1",
+                          record.paid
+                            ? "bg-sage/20 text-foreground"
+                            : "bg-destructive/10 text-destructive",
+                        )}
+                      >
+                        {record.paid ? `Paid ${formatMoney(record.amount)}` : "Unpaid"}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 
 function BoxRow({
   label,
