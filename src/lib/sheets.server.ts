@@ -489,6 +489,7 @@ export async function createStudent(input: {
     : undefined;
   if (enrollment) store.enrollments = [...store.enrollments, enrollment];
 
+  let synced = false;
   if (sheetsConnected()) {
     try {
       await appendRows("STUDENTS", [studentRow(student)]);
@@ -496,20 +497,18 @@ export async function createStudent(input: {
         await appendRows("ENROLLMENTS", [
           [enrollment.id, enrollment.studentId, enrollment.groupId, enrollment.status],
         ]);
+      synced = true;
     } catch {
       /* fall back to memory */
     }
-  } else {
-    memoryStore = store;
   }
-  invalidate();
-  return loadSnapshot(true);
+  return commit(store, synced);
 }
 
-async function replaceAll(store: Store): Promise<void> {
+async function replaceAll(store: Store): Promise<boolean> {
   if (!sheetsConnected()) {
     memoryStore = store;
-    return;
+    return false;
   }
   const cfg = sheetsConfig()!;
   try {
