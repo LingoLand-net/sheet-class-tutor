@@ -296,19 +296,20 @@ function RollCallPage() {
 
       <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-semibold text-muted-foreground">
         <span className="flex items-center gap-2">
-          <span className="size-4 rounded-md bg-present" /> Present
+          <span className="size-4 rounded-md bg-brand-orange" /> Present (top row)
         </span>
         <span className="flex items-center gap-2">
-          <span className="size-4 rounded-md bg-destructive" /> Absent / unpaid
+          <span className="size-4 rounded-md bg-sage" /> Absent (top) · Paid (bottom)
         </span>
         <span className="flex items-center gap-2">
-          <span className="size-4 rounded-md bg-paid" /> Paid
+          <span className="size-4 rounded-md bg-destructive" /> Unpaid (bottom row)
         </span>
         <span className="flex items-center gap-2">
           <span className="size-4 rounded-md bg-muted" /> Nothing recorded
         </span>
-        <span>Tap the last box in a row to set today&apos;s session.</span>
+        <span>Top row is attendance, bottom row is payment.</span>
       </div>
+
 
       <div className="grid gap-3 pb-28 sm:grid-cols-2 xl:grid-cols-3">
         {students.map((student) => {
