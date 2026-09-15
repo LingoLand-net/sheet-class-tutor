@@ -328,16 +328,13 @@ function RollCallPage() {
                   <p className="truncate text-lg font-semibold text-foreground">{student.name}</p>
                   <p className="text-sm text-muted-foreground">{student.level}</p>
                 </div>
-                <span
-                  className={cn(
-                    "rounded-full px-3 py-1 text-sm font-semibold",
-                    student.balance < 0
-                      ? "bg-destructive/10 text-destructive"
-                      : "bg-primary/10 text-primary",
-                  )}
+                <button
+                  type="button"
+                  onClick={() => setHistoryStudent({ id: student.id, name: student.name })}
+                  className="min-h-11 shrink-0 rounded-full bg-secondary px-4 text-sm font-semibold text-secondary-foreground"
                 >
-                  {formatMoney(student.balance)}
-                </span>
+                  Show
+                </button>
               </div>
 
               <BoxRow
@@ -350,7 +347,7 @@ function RollCallPage() {
                   const value =
                     date === activeDate ? current : recordFor(student.id, date) ?? null;
                   if (!value) return "bg-muted";
-                  return value.status === "present" ? "bg-present" : "bg-destructive";
+                  return value.status === "present" ? "bg-brand-orange" : "bg-sage";
                 }}
               />
 
@@ -366,7 +363,7 @@ function RollCallPage() {
                   const value =
                     date === activeDate ? current : recordFor(student.id, date) ?? null;
                   if (!value) return "bg-muted";
-                  return value.paid ? "bg-paid" : "bg-destructive";
+                  return value.paid ? "bg-sage" : "bg-destructive";
                 }}
               />
             </div>
