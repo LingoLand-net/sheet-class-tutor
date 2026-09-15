@@ -315,8 +315,7 @@ export async function seedDemoData(): Promise<LmsSnapshot> {
     });
   }
 
-  invalidate();
-  return loadSnapshot(true);
+  return commit(store, sheetsConnected());
 }
 
 function getMemoryStore(): Store {
@@ -427,9 +426,7 @@ export async function saveRollCall(input: {
     balanceDelta.has(s.id) ? { ...s, balance: s.balance + (balanceDelta.get(s.id) ?? 0) } : s,
   );
 
-  await replaceAll(store);
-  invalidate();
-  return loadSnapshot(true);
+  return commit(store, await replaceAll(store));
 }
 
 export async function upsertGroup(
@@ -441,23 +438,22 @@ export async function upsertGroup(
   } else {
     store.groups = [...store.groups, { ...group, id: newId("g") } as Group];
   }
+  let synced = false;
   if (sheetsConnected()) {
     try {
       await writeRange("GROUPS!A2:G500", store.groups.map(groupRow));
+      synced = true;
     } catch {
       /* fall back to memory */
     }
-  } else {
-    memoryStore = store;
   }
-  invalidate();
-  return loadSnapshot(true);
+  return commit(store, synced);
 }
 
 export async function setGroupStatus(id: string, status: Group["status"]): Promise<LmsSnapshot> {
   const store = await currentStore();
   const group = store.groups.find((g) => g.id === id);
-  if (!group) return loadSnapshot(true);
+  if (!group) return loadSnapshot();
   return upsertGroup({ ...group, status });
 }
 
