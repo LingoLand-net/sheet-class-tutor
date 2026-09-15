@@ -561,10 +561,9 @@ export async function deleteGroup(id: string): Promise<LmsSnapshot> {
   store.groups = store.groups.filter((g) => g.id !== id);
   store.enrollments = store.enrollments.filter((e) => e.groupId !== id);
   store.attendance = store.attendance.filter((a) => a.groupId !== id);
-  await replaceAll(store);
-  invalidate();
-  return loadSnapshot(true);
+  return commit(store, await replaceAll(store));
 }
+
 
 export async function updateStudent(input: {
   id: string;
