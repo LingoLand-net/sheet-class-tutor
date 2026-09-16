@@ -7,13 +7,19 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { type ReactNode } from "react";
 
 import { AdminProvider } from "@/components/lms/admin-lock";
 import { Toaster } from "@/components/ui/sonner";
 
 import appCss from "../styles.css?url";
-import { reportLovableError } from "../lib/lovable-error-reporting";
+
+const SITE_NAME = "Lingo Ville LMS";
+const SITE_DESCRIPTION =
+  "Tablet-first attendance, student ledger, and payment tracking for language centers.";
+const SITE_URL = "https://lingo-ville.com";
+// 1200×630 social share image. Drop a PNG at public/og-image.png.
+const OG_IMAGE = `${SITE_URL}/og-image.png`;
 
 function NotFoundComponent() {
   return (
@@ -40,9 +46,6 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
-  useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -51,7 +54,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
           This page didn't load
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Something went wrong on our end. You can try refreshing or head back home.
+          Something went wrong. You can try refreshing or head back home.
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
@@ -81,29 +84,47 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       {
         name: "viewport",
-        content: "width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1",
+        // Dropped maximum-scale=1: it blocks pinch-zoom, which fails
+        // WCAG 1.4.4 and hurts the Lighthouse accessibility score.
+        content: "width=device-width, initial-scale=1, viewport-fit=cover",
       },
-      { title: "Language Center LMS" },
-      {
-        name: "description",
-        content: "Tablet-first attendance, groups, and student ledger for language centers.",
-      },
-      { name: "author", content: "Language Center" },
-      { property: "og:title", content: "Language Center LMS" },
-      {
-        property: "og:description",
-        content: "Tablet-first attendance, groups, and student ledger for language centers.",
-      },
+      { name: "theme-color", content: "#1f6f7a" },
+
+      // Never index this app. It's an internal admin tool.
+      { name: "robots", content: "noindex, nofollow, noarchive" },
+      { name: "googlebot", content: "noindex, nofollow" },
+
+      { title: SITE_NAME },
+      { name: "description", content: SITE_DESCRIPTION },
+      { name: "author", content: "Ali Cheikh" },
+      { name: "application-name", content: SITE_NAME },
+
+      // Open Graph — for link previews in WhatsApp, Slack, iMessage.
+      { property: "og:site_name", content: SITE_NAME },
       { property: "og:type", content: "website" },
+      { property: "og:url", content: SITE_URL },
+      { property: "og:title", content: SITE_NAME },
+      { property: "og:description", content: SITE_DESCRIPTION },
+      { property: "og:image", content: OG_IMAGE },
+      { property: "og:image:width", content: "1200" },
+      { property: "og:image:height", content: "630" },
+      { property: "og:image:alt", content: SITE_NAME },
+      { property: "og:locale", content: "en_US" },
+
+      // Twitter card
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: SITE_NAME },
+      { name: "twitter:description", content: SITE_DESCRIPTION },
+      { name: "twitter:image", content: OG_IMAGE },
     ],
     links: [
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
+      { rel: "stylesheet", href: appCss },
       { rel: "icon", href: "/favicon.png", type: "image/png" },
+      { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
+      { rel: "canonical", href: SITE_URL },
+      // Speeds up the Google Fonts handshake.
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
     ],
   }),
   shellComponent: RootShell,
