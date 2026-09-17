@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -16,6 +16,11 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { useAdmin } from "@/components/lms/admin-lock";
+import {
+  ErrorScreen,
+  LoadingScreen,
+  LockedScreen,
+} from "@/components/lms/require-auth";
 import { AppShell } from "@/components/lms/shell";
 import {
   Dialog,
@@ -25,6 +30,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getStoredToken } from "@/lib/auth-client";
 import { snapshotQuery } from "@/lib/lms-client";
 import {
   cancelRollCallSession,
@@ -59,10 +65,8 @@ export const Route = createFileRoute("/")({
         content: "Tablet-first attendance and payment tracking for language centers.",
       },
       { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  loader: ({ context }) => context.queryClient.ensureQueryData(snapshotQuery),
   component: RollCallPage,
 });
 
@@ -80,13 +84,24 @@ function labelFor(status: AttendanceStatus | null): string {
 }
 
 function RollCallPage() {
-  const { data } = useSuspenseQuery(snapshotQuery);
+  const { unlocked } = useAdmin();
+  const query = useQuery({ ...snapshotQuery, enabled: unlocked });
+
+  if (!unlocked) return <LockedScreen title="Session Roll Call" />;
+  if (query.isPending) return <LoadingScreen title="Session Roll Call" />;
+  if (query.isError || !query.data) return <ErrorScreen title="Session Roll Call" />;
+
+  return <RollCallBody data={query.data} />;
+}
+
+function RollCallBody({ data }: { data: LmsSnapshot }) {
   const { unlocked } = useAdmin();
   const queryClient = useQueryClient();
   const save = useServerFn(submitRollCall);
   const cancelSession = useServerFn(cancelRollCallSession);
   const clearSession = useServerFn(clearRollCallSession);
   const rescheduleSession = useServerFn(rescheduleRollCallSession);
+  const token = getStoredToken() ?? "";
 
   const activeGroups = data.groups.filter((g) => g.status === "active");
   const [groupId, setGroupId] = useState(activeGroups[0]?.id ?? "");
@@ -173,7 +188,7 @@ function RollCallPage() {
 
   const saveMutation = useMutation({
     mutationFn: (entries: RollCallEntry[]) =>
-      save({ data: { groupId, date: activeDate, entries } }),
+      save({ data: { token, groupId, date: activeDate, entries } }),
     onSuccess: (snapshot: LmsSnapshot) => {
       applySnapshot(snapshot);
       toast.success("Session saved");
@@ -182,7 +197,7 @@ function RollCallPage() {
   });
 
   const cancelMutation = useMutation({
-    mutationFn: () => cancelSession({ data: { groupId, date: activeDate } }),
+    mutationFn: () => cancelSession({ data: { token, groupId, date: activeDate } }),
     onSuccess: (snapshot: LmsSnapshot) => {
       applySnapshot(snapshot);
       setCancelOpen(false);
@@ -192,7 +207,7 @@ function RollCallPage() {
   });
 
   const clearMutation = useMutation({
-    mutationFn: () => clearSession({ data: { groupId, date: activeDate } }),
+    mutationFn: () => clearSession({ data: { token, groupId, date: activeDate } }),
     onSuccess: (snapshot: LmsSnapshot) => {
       applySnapshot(snapshot);
       setClearOpen(false);
@@ -203,7 +218,7 @@ function RollCallPage() {
 
   const rescheduleMutation = useMutation({
     mutationFn: (toDate: string) =>
-      rescheduleSession({ data: { groupId, fromDate: activeDate, toDate } }),
+      rescheduleSession({ data: { token, groupId, fromDate: activeDate, toDate } }),
     onSuccess: (snapshot: LmsSnapshot, toDate) => {
       applySnapshot(snapshot);
       setSessionDate(toDate);
@@ -475,7 +490,7 @@ function RollCallPage() {
                           <span
                             key={date}
                             title={record ? `${date}: ${labelFor(record.status)}` : `${date}: No record`}
-                            className={cn("size-4 rounded-[4px] sm:size-5", color)}
+                            className={cn("size-4 rounded-lg sm:size-5", color)}
                           />
                         );
                       })}
@@ -641,6 +656,7 @@ function RollCallPage() {
 
       <StudentHistoryDialog
         student={historyStudent}
+        token={token}
         onClose={() => setHistoryStudent(null)}
       />
     </AppShell>
@@ -649,15 +665,17 @@ function RollCallPage() {
 
 function StudentHistoryDialog({
   student,
+  token,
   onClose,
 }: {
   student: { id: string; name: string } | null;
+  token: string;
   onClose: () => void;
 }) {
   const fetchHistory = useServerFn(getStudentHistory);
   const history = useQuery({
     queryKey: ["student-history", student?.id],
-    queryFn: () => fetchHistory({ data: { studentId: student!.id } }),
+    queryFn: () => fetchHistory({ data: { token, studentId: student!.id } }),
     enabled: Boolean(student),
     staleTime: 60_000,
   });

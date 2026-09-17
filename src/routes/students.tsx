@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -15,10 +15,16 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { useAdmin } from "@/components/lms/admin-lock";
+import {
+  ErrorScreen,
+  LoadingScreen,
+  LockedScreen,
+} from "@/components/lms/require-auth";
 import { AppShell } from "@/components/lms/shell";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getStoredToken } from "@/lib/auth-client";
 import { snapshotQuery } from "@/lib/lms-client";
 import { addPayment, editStudent, registerStudent, removeStudent } from "@/lib/lms.functions";
 import {
@@ -45,10 +51,8 @@ export const Route = createFileRoute("/students")({
         content: "Balances, enrollments, and full attendance timelines for every student.",
       },
       { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  loader: ({ context }) => context.queryClient.ensureQueryData(snapshotQuery),
   component: StudentsPage,
 });
 
@@ -62,13 +66,24 @@ function labelForStatus(status: AttendanceStatus): string {
 }
 
 function StudentsPage() {
-  const { data } = useSuspenseQuery(snapshotQuery);
+  const { unlocked } = useAdmin();
+  const query = useQuery({ ...snapshotQuery, enabled: unlocked });
+
+  if (!unlocked) return <LockedScreen title="Student Registry" />;
+  if (query.isPending) return <LoadingScreen title="Student Registry" />;
+  if (query.isError || !query.data) return <ErrorScreen title="Student Registry" />;
+
+  return <StudentsBody data={query.data} />;
+}
+
+function StudentsBody({ data }: { data: LmsSnapshot }) {
   const { unlocked } = useAdmin();
   const queryClient = useQueryClient();
   const register = useServerFn(registerStudent);
   const pay = useServerFn(addPayment);
   const update = useServerFn(editStudent);
   const destroy = useServerFn(removeStudent);
+  const token = getStoredToken() ?? "";
 
   const [search, setSearch] = useState("");
   const [openNew, setOpenNew] = useState(false);
@@ -129,6 +144,7 @@ function StudentsPage() {
         form.familyEnabled ? Math.max(0, Number(form.familyPaymentTotal) || 0) : 0;
       return register({
         data: {
+          token,
           name: form.name,
           phone: form.phone,
           level: form.level,
@@ -152,7 +168,8 @@ function StudentsPage() {
   });
 
   const payMutation = useMutation({
-    mutationFn: (input: { studentId: string; amount: number }) => pay({ data: input }),
+    mutationFn: (input: { studentId: string; amount: number }) =>
+      pay({ data: { token, ...input } }),
     onSuccess: (snapshot: LmsSnapshot) => {
       onSuccess(snapshot);
       setPayAmount("");
@@ -165,6 +182,7 @@ function StudentsPage() {
     mutationFn: (input: NonNullable<typeof editForm>) =>
       update({
         data: {
+          token,
           id: input.id,
           name: input.name,
           phone: input.phone,
@@ -187,7 +205,7 @@ function StudentsPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => destroy({ data: { id } }),
+    mutationFn: (id: string) => destroy({ data: { token, id } }),
     onSuccess: (snapshot: LmsSnapshot) => {
       onSuccess(snapshot);
       setPendingDelete(null);

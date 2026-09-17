@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Archive, Plus, RotateCcw, Pencil, Trash2 } from "lucide-react";
@@ -6,10 +6,16 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { useAdmin } from "@/components/lms/admin-lock";
+import {
+  ErrorScreen,
+  LoadingScreen,
+  LockedScreen,
+} from "@/components/lms/require-auth";
 import { AppShell } from "@/components/lms/shell";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getStoredToken } from "@/lib/auth-client";
 import { snapshotQuery } from "@/lib/lms-client";
 import { removeGroup, saveGroup, toggleGroupStatus } from "@/lib/lms.functions";
 import { formatMoney, perSessionPrice, type Group, type LmsSnapshot } from "@/lib/lms-types";
@@ -30,10 +36,8 @@ export const Route = createFileRoute("/groups")({
         content: "Manage class groups, teachers, schedules, and session pricing.",
       },
       { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  loader: ({ context }) => context.queryClient.ensureQueryData(snapshotQuery),
   component: GroupsPage,
 });
 
@@ -82,12 +86,23 @@ function buildSchedule(days: Day[], time: string): string {
 }
 
 function GroupsPage() {
-  const { data } = useSuspenseQuery(snapshotQuery);
+  const { unlocked } = useAdmin();
+  const query = useQuery({ ...snapshotQuery, enabled: unlocked });
+
+  if (!unlocked) return <LockedScreen title="Group Moderator" />;
+  if (query.isPending) return <LoadingScreen title="Group Moderator" />;
+  if (query.isError || !query.data) return <ErrorScreen title="Group Moderator" />;
+
+  return <GroupsBody data={query.data} />;
+}
+
+function GroupsBody({ data }: { data: LmsSnapshot }) {
   const { unlocked } = useAdmin();
   const queryClient = useQueryClient();
   const persist = useServerFn(saveGroup);
   const setStatus = useServerFn(toggleGroupStatus);
   const destroy = useServerFn(removeGroup);
+  const token = getStoredToken() ?? "";
   const [draft, setDraft] = useState<Draft | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Group | null>(null);
 
@@ -96,7 +111,7 @@ function GroupsPage() {
   };
 
   const saveMutation = useMutation({
-    mutationFn: (group: Draft) => persist({ data: group }),
+    mutationFn: (group: Draft) => persist({ data: { token, ...group } }),
     onSuccess: (snapshot: LmsSnapshot) => {
       onSuccess(snapshot);
       setDraft(null);
@@ -106,13 +121,14 @@ function GroupsPage() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: (input: { id: string; status: Group["status"] }) => setStatus({ data: input }),
+    mutationFn: (input: { id: string; status: Group["status"] }) =>
+      setStatus({ data: { token, ...input } }),
     onSuccess,
     onError: () => toast.error("Could not update the group"),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => destroy({ data: { id } }),
+    mutationFn: (id: string) => destroy({ data: { token, id } }),
     onSuccess: (snapshot: LmsSnapshot) => {
       onSuccess(snapshot);
       setPendingDelete(null);
