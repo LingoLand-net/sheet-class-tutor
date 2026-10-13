@@ -11,7 +11,7 @@ async function requireAuth(token: string): Promise<void> {
 const tokenSchema = z.object({ token: z.string().min(1) });
 
 export const unlockAdmin = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => z.object({ pin: z.string().min(1) }).parse(input))
+  .validator((input: unknown) => z.object({ pin: z.string().min(1) }).parse(input))
   .handler(async ({ data }) => {
     const {
       verifyPin, issueToken, authConfigured,
@@ -31,7 +31,7 @@ export const unlockAdmin = createServerFn({ method: "POST" })
   });
 
 export const getSnapshot = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => tokenSchema.parse(input))
+  .validator((input: unknown) => tokenSchema.parse(input))
   .handler(async ({ data }): Promise<LmsSnapshot> => {
     await requireAuth(data.token);
     const { loadSnapshot } = await import("./sheets.server");
@@ -49,7 +49,7 @@ const groupSchema = z.object({
 });
 
 export const saveGroup = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => groupSchema.parse(input))
+  .validator((input: unknown) => groupSchema.parse(input))
   .handler(async ({ data }): Promise<LmsSnapshot> => {
     await requireAuth(data.token);
     const { upsertGroup } = await import("./sheets.server");
@@ -58,7 +58,7 @@ export const saveGroup = createServerFn({ method: "POST" })
   });
 
 export const toggleGroupStatus = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({
       token: z.string().min(1),
       id: z.string().min(1),
@@ -72,7 +72,7 @@ export const toggleGroupStatus = createServerFn({ method: "POST" })
   });
 
 export const removeGroup = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({ token: z.string().min(1), id: z.string().min(1) }).parse(input),
   )
   .handler(async ({ data }): Promise<LmsSnapshot> => {
@@ -82,7 +82,7 @@ export const removeGroup = createServerFn({ method: "POST" })
   });
 
 export const saveGroupSessionDates = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({
       token: z.string().min(1),
       groupId: z.string().min(1),
@@ -96,7 +96,7 @@ export const saveGroupSessionDates = createServerFn({ method: "POST" })
   });
 
 export const registerStudent = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({
       token: z.string().min(1),
       name: z.string().min(1),
@@ -121,7 +121,7 @@ export const registerStudent = createServerFn({ method: "POST" })
   });
 
 export const editStudent = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({
       token: z.string().min(1),
       id: z.string().min(1),
@@ -143,7 +143,7 @@ export const editStudent = createServerFn({ method: "POST" })
   });
 
 export const removeStudent = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({ token: z.string().min(1), id: z.string().min(1) }).parse(input),
   )
   .handler(async ({ data }): Promise<LmsSnapshot> => {
@@ -153,7 +153,7 @@ export const removeStudent = createServerFn({ method: "POST" })
   });
 
 export const assignStudentToGroup = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({
       token: z.string().min(1),
       studentId: z.string().min(1),
@@ -167,7 +167,7 @@ export const assignStudentToGroup = createServerFn({ method: "POST" })
   });
 
 export const unassignStudentFromGroup = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({
       token: z.string().min(1),
       studentId: z.string().min(1),
@@ -183,7 +183,7 @@ export const unassignStudentFromGroup = createServerFn({ method: "POST" })
 const attendStatus = z.union([z.literal("present"), z.literal("absent"), z.literal("")]);
 
 export const submitRollCall = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({
       token: z.string().min(1),
       sessionId: z.string().min(1),
@@ -200,7 +200,7 @@ export const submitRollCall = createServerFn({ method: "POST" })
   });
 
 export const setStudentSessions = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({
       token: z.string().min(1),
       studentId: z.string().min(1),
@@ -219,7 +219,7 @@ export const setStudentSessions = createServerFn({ method: "POST" })
   });
 
 export const getStudentHistory = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({ token: z.string().min(1), studentId: z.string().min(1) }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -229,7 +229,7 @@ export const getStudentHistory = createServerFn({ method: "POST" })
   });
 
 export const seedTestData = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => tokenSchema.parse(input))
+  .validator((input: unknown) => tokenSchema.parse(input))
   .handler(async ({ data }): Promise<LmsSnapshot> => {
     await requireAuth(data.token);
     const { seedTestData: seed } = await import("./sheets.server");
