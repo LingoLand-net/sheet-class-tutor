@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
-  Link,
   createRootRouteWithContext,
   useRouter,
   HeadContent,
@@ -18,25 +17,50 @@ const SITE_NAME = "Lingo Ville LMS";
 const SITE_DESCRIPTION =
   "Tablet-first attendance, student ledger, and payment tracking for language centers.";
 const SITE_URL = "https://lingo-ville.com";
-// 1200×630 social share image. Drop a PNG at public/og-image.png.
 const OG_IMAGE = `${SITE_URL}/og-image.png`;
+const THEME_COLOR = "#0F9589";
 
 function NotFoundComponent() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center">
-        <h1 className="text-7xl font-bold text-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          The page you're looking for doesn't exist or has been moved.
+    <div className="grid min-h-screen place-items-center bg-background px-6 py-16">
+      <div className="mx-auto max-w-2xl text-center">
+        {/* "!" badge — bordered orange square with hard ink shadow */}
+        <div
+          aria-hidden="true"
+          className="mx-auto mb-8 inline-flex size-20 items-center justify-center rounded-[22px] border border-foreground bg-brand-orange text-3xl font-bold text-foreground shadow-[5px_5px_0_var(--color-foreground)]"
+        >
+          !
+        </div>
+
+        <p
+          aria-hidden="true"
+          className="text-[clamp(5rem,16vw,9rem)] leading-[.82] font-bold tracking-[-0.06em] text-brand-orange"
+        >
+          404
         </p>
-        <div className="mt-6">
-          <Link
-            to="/"
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+
+        <h1 className="mt-4 text-[clamp(1.8rem,4vw,2.8rem)] leading-[.95] font-bold tracking-[-0.05em] text-foreground">
+          This page isn&rsquo;t on the roll call.
+        </h1>
+
+        <p className="mx-auto mt-4 max-w-md text-base leading-relaxed text-muted-foreground">
+          The page you&rsquo;re looking for may have been moved, renamed, or never
+          existed. Head back to the dashboard to keep going.
+        </p>
+
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <a
+            href="/"
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-foreground bg-primary px-6 py-3 text-sm font-bold text-primary-foreground transition-transform hover:-translate-y-0.5 hover:shadow-[4px_4px_0_var(--color-foreground)]"
           >
-            Go home
-          </Link>
+            Back to Roll Call
+          </a>
+          <a
+            href="https://lingo-ville.com"
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-foreground bg-card px-6 py-3 text-sm font-bold text-foreground transition-transform hover:-translate-y-0.5 hover:shadow-[4px_4px_0_var(--color-foreground)]"
+          >
+            Visit Lingo&nbsp;Ville ↗
+          </a>
         </div>
       </div>
     </div>
@@ -48,29 +72,39 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          This page didn't load
+    <div className="grid min-h-screen place-items-center bg-background px-6 py-16">
+      <div className="mx-auto max-w-2xl text-center">
+        <div
+          aria-hidden="true"
+          className="mx-auto mb-8 inline-flex size-20 items-center justify-center rounded-[22px] border border-foreground bg-destructive text-3xl font-bold text-destructive-foreground shadow-[5px_5px_0_var(--color-foreground)]"
+        >
+          !
+        </div>
+
+        <h1 className="text-[clamp(1.8rem,4vw,2.8rem)] leading-[.95] font-bold tracking-[-0.05em] text-foreground">
+          This page didn&rsquo;t load.
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Something went wrong. You can try refreshing or head back home.
+
+        <p className="mx-auto mt-4 max-w-md text-base leading-relaxed text-muted-foreground">
+          Something went wrong on our end. You can try refreshing, or head back to
+          the dashboard.
         </p>
-        <div className="mt-6 flex flex-wrap justify-center gap-2">
+
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
           <button
             onClick={() => {
               router.invalidate();
               reset();
             }}
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-foreground bg-primary px-6 py-3 text-sm font-bold text-primary-foreground transition-transform hover:-translate-y-0.5 hover:shadow-[4px_4px_0_var(--color-foreground)]"
           >
             Try again
           </button>
           <a
             href="/"
-            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-foreground bg-card px-6 py-3 text-sm font-bold text-foreground transition-transform hover:-translate-y-0.5 hover:shadow-[4px_4px_0_var(--color-foreground)]"
           >
-            Go home
+            Go to Roll Call
           </a>
         </div>
       </div>
@@ -84,11 +118,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       {
         name: "viewport",
-        // Dropped maximum-scale=1: it blocks pinch-zoom, which fails
-        // WCAG 1.4.4 and hurts the Lighthouse accessibility score.
         content: "width=device-width, initial-scale=1, viewport-fit=cover",
       },
-      { name: "theme-color", content: "#1f6f7a" },
+      { name: "theme-color", content: THEME_COLOR },
 
       // Never index this app. It's an internal admin tool.
       { name: "robots", content: "noindex, nofollow, noarchive" },
@@ -99,7 +131,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "author", content: "Ali Cheikh" },
       { name: "application-name", content: SITE_NAME },
 
-      // Open Graph — for link previews in WhatsApp, Slack, iMessage.
       { property: "og:site_name", content: SITE_NAME },
       { property: "og:type", content: "website" },
       { property: "og:url", content: SITE_URL },
@@ -111,7 +142,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:image:alt", content: SITE_NAME },
       { property: "og:locale", content: "en_US" },
 
-      // Twitter card
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: SITE_NAME },
       { name: "twitter:description", content: SITE_DESCRIPTION },
@@ -122,7 +152,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "icon", href: "/favicon.png", type: "image/png" },
       { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
       { rel: "canonical", href: SITE_URL },
-      // Speeds up the Google Fonts handshake.
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
     ],
@@ -153,7 +182,6 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AdminProvider>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
         <Toaster position="top-center" richColors />
       </AdminProvider>
