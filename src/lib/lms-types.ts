@@ -1,4 +1,9 @@
 export type GroupStatus = "active" | "archived";
+export type Trimester = 1 | 2 | 3;
+
+export const TRIMESTER_SIZES: Record<Trimester, number> = { 1: 10, 2: 9, 3: 7 };
+export const TRIMESTER_LABELS: Record<Trimester, string> = { 1: "T1", 2: "T2", 3: "T3" };
+export const TRIMESTERS: readonly Trimester[] = [1, 2, 3];
 
 export interface Group {
   id: string;
@@ -6,11 +11,6 @@ export interface Group {
   level: string;
   teacher: string;
   schedule: string;
-  /** Total monthly fee for the group. Per-session fee is derived. */
-  pricePerMonth: number;
-  /** How many sessions the group holds per month. Used to split the
-   *  monthly fee into a per-session charge. */
-  sessionsPerMonth: number;
   status: GroupStatus;
 }
 
@@ -19,7 +19,6 @@ export interface Student {
   name: string;
   phone: string;
   level: string;
-  balance: number;
   createdAt: string;
   email: string;
   guardianName: string;
@@ -35,29 +34,30 @@ export interface Enrollment {
   status: "active" | "inactive";
 }
 
-/**
- * Session attendance status:
- * - present:   student attended; session fee is charged.
- * - absent:    student didn't show; session fee is still charged (monthly model).
- * - cancelled: the whole session did not happen; no fee.
- * - skipped:   one student exempted for this session (pre-arranged); no fee.
- */
-export type AttendanceStatus = "present" | "absent" | "cancelled" | "skipped";
+export interface Session {
+  id: string;
+  groupId: string;
+  trimester: Trimester;
+  sessionNumber: number;
+  date: string;
+}
+
+/** "present" | "absent" | "" — empty means no attendance recorded. */
+export type AttendanceStatus = "present" | "absent" | "";
 
 export interface AttendanceRecord {
   id: string;
-  date: string;
-  groupId: string;
+  sessionId: string;
   studentId: string;
   status: AttendanceStatus;
-  /** Fee charged for this session. 0 when cancelled/skipped. */
-  amount: number;
+  paid: boolean;
 }
 
 export interface LmsSnapshot {
   groups: Group[];
   students: Student[];
   enrollments: Enrollment[];
+  sessions: Session[];
   attendance: AttendanceRecord[];
   source: "sheets" | "sample";
 }
@@ -67,23 +67,54 @@ export interface RollCallEntry {
   status: AttendanceStatus;
 }
 
-/** The per-session fee derived from a group's monthly price. */
-export function perSessionPrice(group: Group | undefined): number {
-  if (!group || group.sessionsPerMonth <= 0) return 0;
-  return group.pricePerMonth / group.sessionsPerMonth;
+export function attendanceKey(sessionId: string, studentId: string): string {
+  return `${sessionId}|${studentId}`;
 }
 
-export function formatMoney(value: number): string {
-  const sign = value < 0 ? "-" : "";
-  return `${sign}$${Math.abs(value).toFixed(2)}`;
-}
-
-/** Local-time YYYY-MM-DD. `toISOString()` is UTC and rolls to tomorrow in
- *  the evening for anyone west of UTC, filing sessions on the wrong day. */
 export function todayIso(): string {
   const now = new Date();
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");
   const d = String(now.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+export function isPastSession(s: Session): boolean {
+  if (!s.date) return false;
+  return s.date < todayIso();
+}
+
+export type BlockState =
+  | "present_paid"
+  | "present_unpaid"
+  | "absent"
+  | "unrecorded"
+  | "future";
+
+/**
+ * Visual state of a single year-grid box.
+ *
+ * Attendance and payment are independent facts on each record:
+ *   - present + paid      -> solid emerald
+ *   - present + not paid  -> solid amber
+ *   - absent              -> solid red (regardless of payment)
+ *   - past, no record     -> red-outlined empty
+ *   - future              -> grey
+ */
+export function blockState(
+  record: AttendanceRecord | undefined,
+  session: Session,
+): BlockState {
+  const past = isPastSession(session);
+
+  if (record) {
+    if (record.status === "absent") return "absent";
+    if (record.status === "present") {
+      return record.paid ? "present_paid" : "present_unpaid";
+    }
+    // status is "" but a record exists (payment info only)
+    if (record.paid) return "present_paid";
+  }
+
+  return past ? "unrecorded" : "future";
 }

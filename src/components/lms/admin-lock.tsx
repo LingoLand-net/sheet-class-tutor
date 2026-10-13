@@ -33,7 +33,15 @@ const AdminContext = createContext<AdminContextValue>({
 });
 
 export function AdminProvider({ children }: { children: ReactNode }) {
-  const [unlocked, setUnlockedState] = useState(() => readSession() !== null);
+  // IMPORTANT: initial render must match between server and client.
+  // sessionStorage only exists on the client, so start unlocked = false on
+  // both sides and hydrate it in an effect. Reading sessionStorage in the
+  // useState initializer caused a hydration mismatch and rebuilt the tree.
+  const [unlocked, setUnlockedState] = useState(false);
+
+  useEffect(() => {
+    setUnlockedState(readSession() !== null);
+  }, []);
 
   const setUnlocked = useCallback((v: boolean) => {
     if (!v) clearSession();
@@ -101,9 +109,7 @@ export function AdminPadlock() {
     setStatus({ kind: "idle" });
     const next = (pin + digit).slice(0, PIN_LENGTH);
     setPin(next);
-    if (next.length === PIN_LENGTH) {
-      mutation.mutate(next);
-    }
+    if (next.length === PIN_LENGTH) mutation.mutate(next);
   };
 
   const openDialog = () => {

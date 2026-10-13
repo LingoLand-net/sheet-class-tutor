@@ -1,10 +1,8 @@
-/* Google Fonts — must come before all other @imports per CSS spec. */
-@import "@fontsource/inter/400.css";
-@import "@fontsource/inter/500.css";
-@import "@fontsource/inter/600.css";
-@import "@fontsource/inter/700.css";
-@import "@fontsource/ibm-plex-mono/400.css";
-@import "@fontsource/ibm-plex-mono/500.css";
+/* ═══════════════════════════════════════════════════════════════════
+   FONTS — loaded from Google Fonts CDN, matching the marketing site.
+   Must come before every other @import per CSS spec.
+   ═══════════════════════════════════════════════════════════════════ */
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap");
 
 @import "tailwindcss" source(none);
 @source "../src";
@@ -12,13 +10,21 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ═══════════════════════════════════════════════════════════════════
+   THEME TOKENS
+   Palette and fonts pulled from the lingo-ville marketing site so the
+   LMS reads as the same product: warm cream paper, near-black ink,
+   teal primary, orange secondary, green accent.
+   ═══════════════════════════════════════════════════════════════════ */
 @theme inline {
   /* ---- Font families ---- */
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
-  --font-serif: "Source Serif Pro", ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "Space Grotesk", ui-serif, Georgia, Cambria, "Times New Roman",
+    Times, serif;
+  --font-mono: "DM Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
 
   /* ---- Radii ---- */
   --radius-sm: calc(var(--radius) - 4px);
@@ -51,7 +57,7 @@
   --color-ring: var(--ring);
   --color-ring-offset-background: var(--background);
 
-  /* ---- Domain colors (attendance / payment semantics) ---- */
+  /* ---- Domain colors ---- */
   --color-present: var(--present);
   --color-present-foreground: var(--present-foreground);
   --color-paid: var(--paid);
@@ -80,115 +86,115 @@
 }
 
 :root {
-  --radius: 1rem;
+  --radius: 0.75rem;
 
-  /* Surface */
-  --background: oklch(0.98 0.005 220);
-  --foreground: oklch(0.18 0.015 240);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.015 240);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.015 240);
+  /* Surface — cream paper + near-black ink */
+  --background: #f5eee1;
+  --foreground: #111111;
+  --card: #fffaf2;
+  --card-foreground: #111111;
+  --popover: #fffaf2;
+  --popover-foreground: #111111;
 
-  /* Brand: warm orange primary, bright teal secondary.
-     Traced from lingo-land identity. */
-  --primary: oklab(73.63% 0.08197 0.14854);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.664 0.115 190);
-  --secondary-foreground: oklch(1 0 0);
+  /* Primary = teal, secondary = orange (matches lingo-ville) */
+  --primary: #0f9589;
+  --primary-foreground: #f5eee1;
+  --secondary: #F48C06;
+  --secondary-foreground: #111111;
 
-  /* Neutral */
-  --muted: oklch(0.93 0.008 220);
-  --muted-foreground: oklch(0.42 0.015 240);
-  --accent: oklch(0.97 0.02 65);
-  --accent-foreground: oklch(0.5 0.14 60);
+  /* Neutral / accent */
+  --muted: #e9dfc9;
+  --muted-foreground: #6e6a62;
+  --accent: #11aa62;
+  --accent-foreground: #111111;
 
   /* Feedback */
-  --destructive: oklch(0.58 0.2 28);
-  --destructive-foreground: oklch(0.99 0.01 28);
+  --destructive: #d43b3b;
+  --destructive-foreground: #fffaf2;
 
-  /* Chrome */
-  --border: oklch(0.91 0.008 220);
-  --input: oklch(0.91 0.008 220);
-  --ring: oklch(0.664 0.115 190);
+  /* Chrome — ink-based border at ~24% opacity, matching index.css */
+  --border: rgba(17, 17, 17, 0.24);
+  --input: rgba(17, 17, 17, 0.25);
+  --ring: #0f9589;
 
-  /* Domain: attendance + payment semantics.
-     Present = warm orange, Paid = teal (matches secondary), Skipped = soft sage. */
-  --present: oklch(0.785 0.154 69);
-  --present-foreground: oklch(0.28 0.06 60);
-  --paid: oklch(0.664 0.115 190);
-  --paid-foreground: oklch(0.99 0.01 190);
-  --sage: oklch(0.72 0.05 165);
-  --sage-foreground: oklch(0.24 0.03 165);
-  --brand-orange: oklch(0.785 0.154 69);
-  --brand-orange-foreground: oklch(1 0 0);
+  /* Domain: attendance + payment semantics */
+  --present: #11aa62;
+  --present-foreground: #111111;
+  --paid: #0f9589;
+  --paid-foreground: #f5eee1;
+  --sage: #86c4a0;
+  --sage-foreground: #111111;
+  --brand-orange: #ff6b2c;
+  --brand-orange-foreground: #111111;
 
-  /* Charts */
-  --chart-1: oklch(0.785 0.154 69);
-  --chart-2: oklch(0.664 0.115 190);
-  --chart-3: oklch(0.72 0.05 165);
-  --chart-4: oklch(0.82 0.13 80);
-  --chart-5: oklch(0.55 0.1 200);
+  /* Charts — full brand palette */
+  --chart-1: #0f9589;
+  --chart-2: #ff6b2c;
+  --chart-3: #11aa62;
+  --chart-4: #ffc928;
+  --chart-5: #ff005e;
 
-  /* Sidebar (currently unused; kept for future nav shell) */
-  --sidebar: oklch(1 0 0);
-  --sidebar-foreground: oklch(0.18 0.015 240);
-  --sidebar-primary: oklch(0.785 0.154 69);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.97 0.02 65);
-  --sidebar-accent-foreground: oklch(0.5 0.14 60);
-  --sidebar-border: oklch(0.91 0.008 220);
-  --sidebar-ring: oklch(0.664 0.115 190);
+  /* Sidebar (kept for future nav shell) */
+  --sidebar: #fffaf2;
+  --sidebar-foreground: #111111;
+  --sidebar-primary: #0f9589;
+  --sidebar-primary-foreground: #f5eee1;
+  --sidebar-accent: #ff6b2c;
+  --sidebar-accent-foreground: #111111;
+  --sidebar-border: rgba(17, 17, 17, 0.24);
+  --sidebar-ring: #0f9589;
 }
 
 .dark {
-  --background: oklch(0.16 0.012 250);
-  --foreground: oklch(0.97 0.005 220);
-  --card: oklch(0.21 0.015 250);
-  --card-foreground: oklch(0.97 0.005 220);
-  --popover: oklch(0.21 0.015 250);
-  --popover-foreground: oklch(0.97 0.005 220);
+  /* Dark mode isn't in the marketing site — same palette family, inverted
+     surfaces so the app is still usable at night. */
+  --background: #1a1815;
+  --foreground: #f5eee1;
+  --card: #221f1a;
+  --card-foreground: #f5eee1;
+  --popover: #221f1a;
+  --popover-foreground: #f5eee1;
 
-  --primary: oklch(0.8 0.15 70);
-  --primary-foreground: oklch(0.18 0.02 60);
-  --secondary: oklch(0.7 0.12 190);
-  --secondary-foreground: oklch(0.14 0.02 190);
+  --primary: #14b3a5;
+  --primary-foreground: #0a0a0a;
+  --secondary: #ff7f4a;
+  --secondary-foreground: #0a0a0a;
 
-  --muted: oklch(0.28 0.015 250);
-  --muted-foreground: oklch(0.72 0.015 220);
-  --accent: oklch(0.32 0.06 60);
-  --accent-foreground: oklch(0.9 0.08 70);
+  --muted: #2c2823;
+  --muted-foreground: #a8a196;
+  --accent: #1bc97a;
+  --accent-foreground: #0a0a0a;
 
-  --destructive: oklch(0.68 0.19 25);
-  --destructive-foreground: oklch(0.99 0.01 28);
+  --destructive: #e05555;
+  --destructive-foreground: #f5eee1;
 
-  --border: oklch(0.3 0.012 250);
-  --input: oklch(0.3 0.012 250);
-  --ring: oklch(0.7 0.12 190);
+  --border: rgba(245, 238, 225, 0.16);
+  --input: rgba(245, 238, 225, 0.18);
+  --ring: #14b3a5;
 
-  --present: oklch(0.8 0.15 70);
-  --present-foreground: oklch(0.2 0.04 60);
-  --paid: oklch(0.7 0.12 190);
-  --paid-foreground: oklch(0.14 0.02 190);
-  --sage: oklch(0.68 0.05 165);
-  --sage-foreground: oklch(0.16 0.02 165);
-  --brand-orange: oklch(0.8 0.15 70);
-  --brand-orange-foreground: oklch(0.18 0.02 60);
+  --present: #1bc97a;
+  --present-foreground: #0a0a0a;
+  --paid: #14b3a5;
+  --paid-foreground: #0a0a0a;
+  --sage: #6ba585;
+  --sage-foreground: #0a0a0a;
+  --brand-orange: #ff7f4a;
+  --brand-orange-foreground: #0a0a0a;
 
-  --chart-1: oklch(0.8 0.15 70);
-  --chart-2: oklch(0.7 0.12 190);
-  --chart-3: oklch(0.72 0.05 165);
-  --chart-4: oklch(0.75 0.13 80);
-  --chart-5: oklch(0.6 0.1 200);
+  --chart-1: #14b3a5;
+  --chart-2: #ff7f4a;
+  --chart-3: #1bc97a;
+  --chart-4: #ffc928;
+  --chart-5: #ff005e;
 
-  --sidebar: oklch(0.19 0.014 250);
-  --sidebar-foreground: oklch(0.97 0.005 220);
-  --sidebar-primary: oklch(0.8 0.15 70);
-  --sidebar-primary-foreground: oklch(0.18 0.02 60);
-  --sidebar-accent: oklch(0.32 0.06 60);
-  --sidebar-accent-foreground: oklch(0.9 0.08 70);
-  --sidebar-border: oklch(0.3 0.012 250);
-  --sidebar-ring: oklch(0.7 0.12 190);
+  --sidebar: #221f1a;
+  --sidebar-foreground: #f5eee1;
+  --sidebar-primary: #14b3a5;
+  --sidebar-primary-foreground: #0a0a0a;
+  --sidebar-accent: #ff7f4a;
+  --sidebar-accent-foreground: #0a0a0a;
+  --sidebar-border: rgba(245, 238, 225, 0.16);
+  --sidebar-ring: #14b3a5;
 }
 
 @layer base {
@@ -204,17 +210,18 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Numeric columns (balances, prices, session counts) read cleaner in a
-     monospaced face at tablet distance. */
+  /* Numeric columns read cleaner in DM Mono at tablet distance. */
   .tabular-nums,
   [data-numeric] {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
   }
 
+  /* Headings use Space Grotesk, matching the marketing site's display type. */
   h1,
   h2,
   h3 {
-    letter-spacing: -0.01em;
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
   }
 }

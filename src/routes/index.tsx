@@ -1,16 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import {
   ArrowDownAZ,
   ArrowUpZA,
-  CalendarClock,
-  CalendarX,
-  ChevronLeft,
-  ChevronRight,
-  Eraser,
-  Save,
+  Check,
   Search,
+  UserCheck,
+  UserX,
+  X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -22,126 +21,76 @@ import {
   LockedScreen,
 } from "@/components/lms/require-auth";
 import { AppShell } from "@/components/lms/shell";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { getStoredToken } from "@/lib/auth-client";
 import { snapshotQuery } from "@/lib/lms-client";
+import { submitRollCall } from "@/lib/lms.functions";
 import {
-  cancelRollCallSession,
-  clearRollCallSession,
-  getStudentHistory,
-  rescheduleRollCallSession,
-  submitRollCall,
-} from "@/lib/lms.functions";
-import {
-  formatMoney,
-  perSessionPrice,
-  todayIso,
+  TRIMESTER_LABELS,
+  attendanceKey,
+  blockState,
   type AttendanceRecord,
   type AttendanceStatus,
+  type BlockState,
   type LmsSnapshot,
   type RollCallEntry,
+  type Session,
 } from "@/lib/lms-types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Session Roll Call | Language Center LMS" },
+      { title: "Roll Call | Language Center LMS" },
       {
         name: "description",
-        content:
-          "Take attendance and view payment status for language class sessions on a tablet, synced to Google Sheets.",
+        content: "Attendance and yearly view for language center sessions.",
       },
-      { property: "og:title", content: "Session Roll Call | Language Center LMS" },
-      {
-        property: "og:description",
-        content: "Tablet-first attendance and payment tracking for language centers.",
-      },
-      { property: "og:type", content: "website" },
     ],
   }),
-  component: RollCallPage,
+  component: Page,
 });
 
-type MarkStatus = "present" | "absent" | "skipped";
-const CYCLE: readonly (MarkStatus | null)[] = [null, "present", "absent", "skipped"];
-
-function labelFor(status: AttendanceStatus | null): string {
-  switch (status) {
-    case "present":   return "Present";
-    case "absent":    return "Absent";
-    case "skipped":   return "Skipped";
-    case "cancelled": return "Cancelled";
-    default:          return "Not set";
-  }
+function Page() {
+  const { unlocked } = useAdmin();
+  const q = useQuery({ ...snapshotQuery, enabled: unlocked });
+  if (!unlocked) return <LockedScreen title="Roll Call" />;
+  if (q.isPending) return <LoadingScreen title="Roll Call" />;
+  if (q.isError || !q.data) return <ErrorScreen title="Roll Call" />;
+  return <Body data={q.data} />;
 }
 
-function RollCallPage() {
-  const { unlocked } = useAdmin();
-  const query = useQuery({ ...snapshotQuery, enabled: unlocked });
+/** Draft value in the roll call table. `""` means "clear the record". */
+type DraftValue = "present" | "absent" | "";
 
-  if (!unlocked) return <LockedScreen title="Session Roll Call" />;
-  if (query.isPending) return <LoadingScreen title="Session Roll Call" />;
-  if (query.isError || !query.data) return <ErrorScreen title="Session Roll Call" />;
-
-  return <RollCallBody data={query.data} />;
-}
-
-function RollCallBody({ data }: { data: LmsSnapshot }) {
-  const { unlocked } = useAdmin();
-  const queryClient = useQueryClient();
-  const save = useServerFn(submitRollCall);
-  const cancelSession = useServerFn(cancelRollCallSession);
-  const clearSession = useServerFn(clearRollCallSession);
-  const rescheduleSession = useServerFn(rescheduleRollCallSession);
+function Body({ data }: { data: LmsSnapshot }) {
+  const qc = useQueryClient();
   const token = getStoredToken() ?? "";
+  const submit = useServerFn(submitRollCall);
 
-  const activeGroups = data.groups.filter((g) => g.status === "active");
-  const [groupId, setGroupId] = useState(activeGroups[0]?.id ?? "");
-  const [marks, setMarks] = useState<Record<string, MarkStatus>>({});
+  const groups = useMemo(
+    () => data.groups.filter((g) => g.status === "active"),
+    [data.groups],
+  );
+  const [groupId, setGroupId] = useState(groups[0]?.id ?? "");
+  const [sessionId, setSessionId] = useState<string>("");
   const [sortAsc, setSortAsc] = useState(true);
   const [search, setSearch] = useState("");
-  const [sessionDate, setSessionDate] = useState<string | null>(null);
-  const [historyStudent, setHistoryStudent] = useState<{ id: string; name: string } | null>(null);
-  const [cancelOpen, setCancelOpen] = useState(false);
-  const [clearOpen, setClearOpen] = useState(false);
-  const [rescheduleOpen, setRescheduleOpen] = useState(false);
-  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [draft, setDraft] = useState<Record<string, DraftValue>>({});
 
-  const group = data.groups.find((g) => g.id === groupId);
-  const perSession = perSessionPrice(group);
+  const groupSessions = useMemo(
+    () =>
+      data.sessions
+        .filter((s) => s.groupId === groupId)
+        .sort(
+          (a, b) =>
+            a.trimester - b.trimester || a.sessionNumber - b.sessionNumber,
+        ),
+    [data.sessions, groupId],
+  );
 
-  const sessionDates = useMemo(() => {
-    const dates = new Set(
-      data.attendance.filter((a) => a.groupId === groupId).map((a) => a.date),
-    );
-    dates.add(todayIso());
-    return [...dates].sort();
-  }, [data.attendance, groupId]);
-
-  const activeDate = sessionDate ?? sessionDates[sessionDates.length - 1] ?? todayIso();
-  const dateIndex = sessionDates.indexOf(activeDate);
-
-  const historyDates = useMemo(() => {
-    const upTo = sessionDates.slice(0, dateIndex + 1);
-    return upTo.slice(-12);
-  }, [sessionDates, dateIndex]);
-
-  const attendanceIndex = useMemo(() => {
-    const map = new Map<string, AttendanceRecord>();
-    for (const a of data.attendance) {
-      if (a.groupId !== groupId) continue;
-      map.set(`${a.studentId}|${a.date}`, a);
-    }
-    return map;
-  }, [data.attendance, groupId]);
+  const activeSession: Session | undefined =
+    groupSessions.find((s) => s.id === sessionId) ?? groupSessions[0];
 
   const enrolled = useMemo(() => {
     const ids = new Set(
@@ -152,133 +101,153 @@ function RollCallBody({ data }: { data: LmsSnapshot }) {
     return data.students.filter((s) => ids.has(s.id));
   }, [data.enrollments, data.students, groupId]);
 
-  const visibleStudents = useMemo(() => {
+  const attendanceIndex = useMemo(() => {
+    const m = new Map<string, AttendanceRecord>();
+    for (const a of data.attendance) m.set(attendanceKey(a.sessionId, a.studentId), a);
+    return m;
+  }, [data.attendance]);
+
+  /** Server-side status for the current session, per student. */
+  const saved = useMemo(() => {
+    const m = new Map<string, "present" | "absent">();
+    if (!activeSession) return m;
+    for (const s of enrolled) {
+      const rec = attendanceIndex.get(attendanceKey(activeSession.id, s.id));
+      if (rec?.status === "present" || rec?.status === "absent") {
+        m.set(s.id, rec.status);
+      }
+    }
+    return m;
+  }, [activeSession, enrolled, attendanceIndex]);
+
+  /** Effective status: draft wins; else server; else unset. */
+  const statusFor = (studentId: string): "present" | "absent" | "unset" => {
+    if (studentId in draft) {
+      const v = draft[studentId];
+      return v === "" ? "unset" : v;
+    }
+    return saved.get(studentId) ?? "unset";
+  };
+
+  const displayIndex = useMemo(() => {
+    const m = new Map(attendanceIndex);
+    if (!activeSession) return m;
+    for (const s of enrolled) {
+      if (!(s.id in draft)) continue;
+      const key = attendanceKey(activeSession.id, s.id);
+      const value = draft[s.id]!;
+      if (value === "") {
+        // Preview the "clear" state — hide any present/absent but keep the
+        // record if it carries a payment flag.
+        const existing = attendanceIndex.get(key);
+        if (existing?.paid) {
+          m.set(key, { ...existing, status: "" });
+        } else {
+          m.delete(key);
+        }
+      } else {
+        const existing = attendanceIndex.get(key);
+        m.set(key, {
+          id: existing?.id ?? `draft-${s.id}`,
+          sessionId: activeSession.id,
+          studentId: s.id,
+          status: value,
+          paid: existing?.paid ?? false,
+        });
+      }
+    }
+    return m;
+  }, [attendanceIndex, activeSession, enrolled, draft]);
+
+  const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
-    const list = term ? enrolled.filter((s) => s.name.toLowerCase().includes(term)) : enrolled;
+    const list = term
+      ? enrolled.filter((s) => s.name.toLowerCase().includes(term))
+      : enrolled;
     return [...list].sort((a, b) =>
       sortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name),
     );
-  }, [enrolled, sortAsc, search]);
+  }, [enrolled, search, sortAsc]);
 
-  const recordFor = (studentId: string, date: string | null) =>
-    date ? attendanceIndex.get(`${studentId}|${date}`) : undefined;
-
-  const statusFor = (studentId: string): AttendanceStatus | null => {
-    const mark = marks[studentId];
-    if (mark) return mark;
-    return recordFor(studentId, activeDate)?.status ?? null;
-  };
-
-  const sessionCancelled = useMemo(() => {
-    if (!activeDate || enrolled.length === 0) return false;
-    let cancelled = 0;
-    for (const s of enrolled) {
-      if (attendanceIndex.get(`${s.id}|${activeDate}`)?.status === "cancelled") cancelled++;
-    }
-    return cancelled === enrolled.length;
-  }, [enrolled, activeDate, attendanceIndex]);
-
-  const dirty = Object.keys(marks).length > 0;
-  const hasSaved = enrolled.some((s) => recordFor(s.id, activeDate) !== undefined);
-
-  const applySnapshot = (snapshot: LmsSnapshot) => {
-    queryClient.setQueryData(snapshotQuery.queryKey, snapshot);
-    setMarks({});
-  };
-
-  const saveMutation = useMutation({
+  const mutation = useMutation({
     mutationFn: (entries: RollCallEntry[]) =>
-      save({ data: { token, groupId, date: activeDate, entries } }),
-    onSuccess: (snapshot: LmsSnapshot) => {
-      applySnapshot(snapshot);
-      toast.success("Session saved");
+      submit({ data: { token, sessionId: activeSession!.id, entries } }),
+    onSuccess: (snap) => {
+      qc.setQueryData(snapshotQuery.queryKey, snap);
+      setDraft({});
+      toast.success("Saved");
     },
-    onError: () => toast.error("Could not save the session"),
+    onError: () => toast.error("Could not save"),
   });
 
-  const cancelMutation = useMutation({
-    mutationFn: () => cancelSession({ data: { token, groupId, date: activeDate } }),
-    onSuccess: (snapshot: LmsSnapshot) => {
-      applySnapshot(snapshot);
-      setCancelOpen(false);
-      toast.success("Session cancelled");
-    },
-    onError: () => toast.error("Could not cancel the session"),
-  });
+  const dirty = Object.keys(draft).length > 0;
 
-  const clearMutation = useMutation({
-    mutationFn: () => clearSession({ data: { token, groupId, date: activeDate } }),
-    onSuccess: (snapshot: LmsSnapshot) => {
-      applySnapshot(snapshot);
-      setClearOpen(false);
-      toast.success("Session cleared");
-    },
-    onError: () => toast.error("Could not clear the session"),
-  });
+  /** Cycle: unset → present → absent → unset. */
+  const cycle = (studentId: string) => {
+    const cur = statusFor(studentId);
+    const next: DraftValue =
+      cur === "unset" ? "present" : cur === "present" ? "absent" : "";
 
-  const rescheduleMutation = useMutation({
-    mutationFn: (toDate: string) =>
-      rescheduleSession({ data: { token, groupId, fromDate: activeDate, toDate } }),
-    onSuccess: (snapshot: LmsSnapshot, toDate) => {
-      applySnapshot(snapshot);
-      setSessionDate(toDate);
-      setRescheduleOpen(false);
-      toast.success("Session rescheduled");
-    },
-    onError: () => toast.error("Could not reschedule the session"),
-  });
-
-  const saveAll = () => {
-    const entries: RollCallEntry[] = enrolled.map((s) => ({
-      studentId: s.id,
-      status: statusFor(s.id) ?? "absent",
-    }));
-    saveMutation.mutate(entries);
-  };
-
-  const cycleStatus = (studentId: string) => {
-    const current = statusFor(studentId);
-    setMarks((prev) => {
-      const effective: MarkStatus | null =
-        current === "cancelled" ? null : (current as MarkStatus | null);
-      const idx = CYCLE.indexOf(effective);
-      const next = CYCLE[(idx + 1) % CYCLE.length] ?? null;
+    setDraft((prev) => {
+      const serverValue = saved.get(studentId);
       const out = { ...prev };
-      if (next === null) delete out[studentId];
+      const resultingStatus: "present" | "absent" | "unset" =
+        next === "" ? "unset" : next;
+      const serverOrUnset = serverValue ?? "unset";
+      if (resultingStatus === serverOrUnset) delete out[studentId];
       else out[studentId] = next;
       return out;
     });
   };
 
-  const setAll = (status: MarkStatus) =>
-    setMarks(Object.fromEntries(enrolled.map((s) => [s.id, status])));
-
-  const stepDate = (delta: number) => {
-    const next = sessionDates[dateIndex + delta];
-    if (next) {
-      setSessionDate(next);
-      setMarks({});
+  const markAll = (value: "present" | "absent") => {
+    const out: Record<string, DraftValue> = {};
+    for (const s of enrolled) {
+      if (saved.get(s.id) !== value) out[s.id] = value;
     }
+    setDraft(out);
+  };
+
+  const clearAll = () => {
+    const out: Record<string, DraftValue> = {};
+    for (const s of enrolled) {
+      if (saved.has(s.id)) out[s.id] = "";
+    }
+    setDraft(out);
+  };
+
+  const saveAll = () => {
+    if (!activeSession) return;
+    const entries: RollCallEntry[] = Object.entries(draft).map(
+      ([studentId, status]) => ({ studentId, status }),
+    );
+    if (entries.length === 0) {
+      toast.info("Nothing to save");
+      return;
+    }
+    mutation.mutate(entries);
   };
 
   return (
     <AppShell
-      title="Session Roll Call"
+      title="Roll Call"
       subtitle={
-        group
-          ? `${activeDate} · ${group.name} · ${formatMoney(perSession)}/session`
-          : activeDate
+        activeSession
+          ? `${TRIMESTER_LABELS[activeSession.trimester]} · S${activeSession.sessionNumber}${
+              activeSession.date ? ` · ${activeSession.date}` : ""
+            }`
+          : "No sessions"
       }
     >
       <div className="mb-4 flex flex-wrap gap-2">
-        {activeGroups.map((g) => (
+        {groups.map((g) => (
           <button
             key={g.id}
             type="button"
             onClick={() => {
               setGroupId(g.id);
-              setMarks({});
-              setSessionDate(null);
+              setSessionId("");
+              setDraft({});
             }}
             className={cn(
               "min-h-12 rounded-2xl px-5 text-base font-semibold transition-colors",
@@ -290,6 +259,11 @@ function RollCallBody({ data }: { data: LmsSnapshot }) {
             {g.name}
           </button>
         ))}
+        {groups.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No active groups. Create one in the Groups tab.
+          </p>
+        ) : null}
       </div>
 
       <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto]">
@@ -297,232 +271,134 @@ function RollCallBody({ data }: { data: LmsSnapshot }) {
           <Search className="absolute top-3.5 left-4 size-5 text-muted-foreground" />
           <Input
             className="h-12 rounded-2xl pl-12 text-base"
-            placeholder="Search students by name"
+            placeholder="Search students"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 rounded-2xl bg-secondary p-1">
-            <button
-              type="button"
-              aria-label="Previous session"
-              disabled={dateIndex <= 0}
-              onClick={() => stepDate(-1)}
-              className="flex size-11 items-center justify-center rounded-xl text-secondary-foreground disabled:opacity-30"
-            >
-              <ChevronLeft className="size-6" />
-            </button>
-            <select
-              aria-label="Session date"
-              value={activeDate}
-              onChange={(e) => {
-                setSessionDate(e.target.value);
-                setMarks({});
-              }}
-              className="h-11 rounded-xl bg-transparent px-2 text-base font-semibold text-secondary-foreground"
-            >
-              {sessionDates.map((d) => (
-                <option key={d} value={d}>
-                  {d === todayIso() ? `${d} (today)` : d}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              aria-label="Next session"
-              disabled={dateIndex >= sessionDates.length - 1}
-              onClick={() => stepDate(1)}
-              className="flex size-11 items-center justify-center rounded-xl text-secondary-foreground disabled:opacity-30"
-            >
-              <ChevronRight className="size-6" />
-            </button>
-          </div>
-
+          <select
+            value={activeSession?.id ?? ""}
+            onChange={(e) => {
+              setSessionId(e.target.value);
+              setDraft({});
+            }}
+            className="h-12 rounded-2xl bg-secondary px-4 text-base font-semibold text-secondary-foreground"
+          >
+            {groupSessions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {TRIMESTER_LABELS[s.trimester]} · S{s.sessionNumber}
+                {s.date ? ` · ${s.date}` : ""}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             onClick={() => setSortAsc((v) => !v)}
             className="flex min-h-12 items-center gap-2 rounded-2xl bg-secondary px-4 font-semibold text-secondary-foreground"
           >
-            {sortAsc ? <ArrowDownAZ className="size-5" /> : <ArrowUpZA className="size-5" />}
+            {sortAsc ? (
+              <ArrowDownAZ className="size-5" />
+            ) : (
+              <ArrowUpZA className="size-5" />
+            )}
             {sortAsc ? "A–Z" : "Z–A"}
           </button>
         </div>
       </div>
 
-      {!unlocked ? (
-        <p className="mb-4 rounded-2xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground">
-          Tap the padlock and enter the PIN to record attendance and manage sessions.
-        </p>
-      ) : (
+      {enrolled.length > 0 ? (
         <div className="mb-4 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => setAll("present")}
-            className="min-h-12 rounded-2xl bg-brand-orange/15 px-5 font-semibold text-brand-orange"
+            onClick={() => markAll("present")}
+            className="flex min-h-11 items-center gap-2 rounded-2xl bg-emerald-500/15 px-4 font-semibold text-emerald-700"
           >
-            Mark all present
+            <Check className="size-4" /> Mark all present
           </button>
           <button
             type="button"
-            onClick={() => setAll("absent")}
-            className="min-h-12 rounded-2xl bg-destructive/10 px-5 font-semibold text-destructive"
+            onClick={() => markAll("absent")}
+            className="flex min-h-11 items-center gap-2 rounded-2xl bg-destructive/10 px-4 font-semibold text-destructive"
           >
-            Mark all absent
+            <X className="size-4" /> Mark all absent
           </button>
           <button
             type="button"
-            disabled={!dirty}
-            onClick={() => setMarks({})}
-            className="min-h-12 rounded-2xl bg-secondary px-5 font-semibold text-secondary-foreground disabled:opacity-40"
+            onClick={clearAll}
+            className="flex min-h-11 items-center gap-2 rounded-2xl bg-secondary px-4 font-semibold text-secondary-foreground"
           >
-            Undo changes
+            Clear all
           </button>
-
-          <div className="flex-1" />
-
-          <button
-            type="button"
-            disabled={rescheduleMutation.isPending || cancelMutation.isPending}
-            onClick={() => {
-              setRescheduleDate(activeDate);
-              setRescheduleOpen(true);
-            }}
-            className="flex min-h-12 items-center gap-2 rounded-2xl bg-secondary px-5 font-semibold text-secondary-foreground disabled:opacity-40"
-          >
-            <CalendarClock className="size-5" />
-            Reschedule
-          </button>
-          <button
-            type="button"
-            disabled={cancelMutation.isPending || saveMutation.isPending}
-            onClick={() => setCancelOpen(true)}
-            className="flex min-h-12 items-center gap-2 rounded-2xl bg-destructive/10 px-5 font-semibold text-destructive disabled:opacity-40"
-          >
-            <CalendarX className="size-5" />
-            Cancel session
-          </button>
+          {dirty ? (
+            <button
+              type="button"
+              onClick={() => setDraft({})}
+              className="ml-auto flex min-h-11 items-center gap-2 rounded-2xl bg-secondary px-4 font-semibold text-secondary-foreground"
+            >
+              Undo
+            </button>
+          ) : null}
         </div>
-      )}
-
-      {sessionCancelled ? (
-        <p className="mb-4 rounded-2xl bg-muted px-4 py-3 text-sm font-medium text-muted-foreground">
-          This session is cancelled. No fees were charged. Tap any student to restore attendance.
-        </p>
       ) : null}
 
-      <div className="overflow-x-auto border border-border bg-card shadow-sm">
-        <table className="w-full min-w-[780px] border-collapse text-sm">
+      <div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-sm">
+        <table className="w-full min-w-[820px] border-collapse text-sm">
           <thead className="bg-secondary/60 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
             <tr>
               <th className="px-4 py-3">Student</th>
               <th className="px-3 py-3">Attendance</th>
-              <th className="px-3 py-3">Payment</th>
-              <th className="px-4 py-3">Recent sessions</th>
-              <th className="px-4 py-3 text-right">History</th>
+              <th className="px-3 py-3">Year</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {visibleStudents.map((student) => {
-              const status = statusFor(student.id);
-              const changed = student.id in marks;
-              const owes = student.balance < 0;
-
+            {visible.map((student) => {
+              const st = statusFor(student.id);
+              const changed = student.id in draft;
               return (
-                <tr
-                  key={student.id}
-                  className={cn("transition-colors", changed && "bg-primary/5")}
-                >
-                  <td className="max-w-[260px] px-4 py-3">
-                    <p className="truncate font-semibold text-foreground">{student.name}</p>
-                    <p className="truncate text-xs text-muted-foreground">{student.level}</p>
+                <tr key={student.id} className={cn(changed && "bg-primary/5")}>
+                  <td className="max-w-[240px] px-4 py-3">
+                    <p className="truncate font-semibold text-foreground">
+                      {student.name}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {student.level}
+                    </p>
                   </td>
-
                   <td className="px-3 py-3">
                     <button
                       type="button"
-                      disabled={!unlocked}
-                      onClick={() => cycleStatus(student.id)}
-                      aria-label={`Cycle attendance for ${student.name}: currently ${labelFor(status)}`}
-                      title="Tap to cycle: Present → Absent → Skipped → Not set"
+                      onClick={() => cycle(student.id)}
                       className={cn(
-                        "min-h-11 min-w-32 rounded-xl px-4 font-semibold transition-colors disabled:opacity-40",
-                        status === "present"
-                          ? "bg-brand-orange/15 text-brand-orange"
-                          : status === "absent"
-                            ? "bg-destructive/15 text-destructive"
-                            : "bg-muted text-muted-foreground",
-                        status === "skipped" && "border border-dashed border-muted-foreground/40",
+                        "flex min-h-11 min-w-32 items-center justify-center gap-2 rounded-xl px-4 font-semibold transition-colors",
+                        st === "present" && "bg-emerald-500/15 text-emerald-700",
+                        st === "absent" && "bg-destructive/15 text-destructive",
+                        st === "unset" && "bg-muted text-muted-foreground",
                       )}
                     >
-                      {labelFor(status)}
+                      {st === "present" && <UserCheck className="size-5" />}
+                      {st === "absent" && <UserX className="size-5" />}
+                      {st === "unset"
+                        ? "Unmarked"
+                        : st === "present"
+                          ? "Present"
+                          : "Absent"}
                     </button>
                   </td>
-
                   <td className="px-3 py-3">
-                    <span
-                      className={cn(
-                        "inline-block whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-semibold",
-                        owes
-                          ? "bg-destructive/15 text-destructive"
-                          : "bg-muted text-muted-foreground",
-                      )}
-                    >
-                      {owes ? `Owes ${formatMoney(-student.balance)}` : "Paid"}
-                    </span>
-                  </td>
-
-                  <td className="px-4 py-3">
-                    <div
-                      className="flex items-center gap-1.5"
-                      aria-label={`${student.name} recent sessions`}
-                    >
-                      {historyDates.map((date) => {
-                        const record = recordFor(student.id, date);
-                        const color =
-                          !record || record.status === "cancelled" || record.status === "skipped"
-                            ? "bg-muted"
-                            : record.status === "absent"
-                              ? "bg-destructive"
-                              : "bg-brand-orange";
-                        return (
-                          <span
-                            key={date}
-                            title={record ? `${date}: ${labelFor(record.status)}` : `${date}: No record`}
-                            className={cn("size-4 rounded-lg sm:size-5", color)}
-                          />
-                        );
-                      })}
-                      {historyDates.length === 0 ? (
-                        <span className="text-xs text-muted-foreground">No sessions</span>
-                      ) : null}
-                    </div>
-                    {historyDates.length > 0 ? (
-                      <p className="mt-1 text-[10px] text-muted-foreground">
-                        {historyDates[0]} to {historyDates[historyDates.length - 1]}
-                      </p>
-                    ) : null}
-                  </td>
-
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setHistoryStudent({ id: student.id, name: student.name })}
-                      className="min-h-10 rounded-xl bg-secondary px-3 font-semibold text-secondary-foreground"
-                    >
-                      History
-                    </button>
+                    <YearGrid
+                      sessions={groupSessions}
+                      attendanceIndex={displayIndex}
+                      studentId={student.id}
+                    />
                   </td>
                 </tr>
               );
             })}
-            {visibleStudents.length === 0 ? (
+            {visible.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-muted-foreground">
-                  {search
-                    ? "No student matches that name."
-                    : "No students enrolled in this group yet."}
+                <td colSpan={3} className="px-4 py-8 text-muted-foreground">
+                  No students enrolled.
                 </td>
               </tr>
             ) : null}
@@ -530,201 +406,118 @@ function RollCallBody({ data }: { data: LmsSnapshot }) {
         </table>
       </div>
 
-      {unlocked && enrolled.length > 0 ? (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      {enrolled.length > 0 ? (
+        <div className="mt-4">
           <button
             type="button"
-            disabled={saveMutation.isPending}
+            disabled={mutation.isPending || !dirty}
             onClick={saveAll}
-            className="flex min-h-16 items-center justify-center gap-3 rounded-2xl bg-primary text-lg font-bold text-primary-foreground disabled:opacity-60"
+            className="min-h-14 w-full rounded-2xl bg-primary text-lg font-bold text-primary-foreground disabled:opacity-40"
           >
-            <Save className="size-6" />
-            {saveMutation.isPending ? "Saving…" : hasSaved ? "Save changes" : "Save session"}
-          </button>
-          <button
-            type="button"
-            disabled={!hasSaved || clearMutation.isPending}
-            onClick={() => setClearOpen(true)}
-            className="flex min-h-16 items-center justify-center gap-3 rounded-2xl bg-secondary text-lg font-bold text-secondary-foreground disabled:opacity-40"
-          >
-            <Eraser className="size-6" />
-            Clear this session
+            {mutation.isPending
+              ? "Saving…"
+              : dirty
+                ? `Save ${Object.keys(draft).length} change${Object.keys(draft).length === 1 ? "" : "s"}`
+                : "No changes to save"}
           </button>
         </div>
       ) : null}
-
-      <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
-        <DialogContent className="max-w-md rounded-3xl">
-          <DialogHeader>
-            <DialogTitle className="text-xl">Cancel session on {activeDate}?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Everyone in {group?.name ?? "this group"} will be marked as cancelled. No fees will be
-            charged for this session. You can undo by taking attendance again.
-          </p>
-          <div className="mt-2 grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setCancelOpen(false)}
-              className="min-h-14 rounded-2xl bg-secondary font-bold text-secondary-foreground"
-            >
-              Keep session
-            </button>
-            <button
-              type="button"
-              disabled={cancelMutation.isPending}
-              onClick={() => cancelMutation.mutate()}
-              className="min-h-14 rounded-2xl bg-destructive font-bold text-destructive-foreground disabled:opacity-50"
-            >
-              {cancelMutation.isPending ? "Cancelling…" : "Cancel session"}
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={clearOpen} onOpenChange={setClearOpen}>
-        <DialogContent className="max-w-md rounded-3xl">
-          <DialogHeader>
-            <DialogTitle className="text-xl">Clear session on {activeDate}?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Every attendance record for this session will be removed and any fees charged will be
-            refunded to student balances. This cannot be undone.
-          </p>
-          <div className="mt-2 grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setClearOpen(false)}
-              className="min-h-14 rounded-2xl bg-secondary font-bold text-secondary-foreground"
-            >
-              Keep records
-            </button>
-            <button
-              type="button"
-              disabled={clearMutation.isPending}
-              onClick={() => clearMutation.mutate()}
-              className="min-h-14 rounded-2xl bg-destructive font-bold text-destructive-foreground disabled:opacity-50"
-            >
-              {clearMutation.isPending ? "Clearing…" : "Clear session"}
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={rescheduleOpen} onOpenChange={setRescheduleOpen}>
-        <DialogContent className="max-w-md rounded-3xl">
-          <DialogHeader>
-            <DialogTitle className="text-xl">Reschedule session</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4">
-            <div className="grid gap-2">
-              <Label className="text-sm font-semibold">New date</Label>
-              <Input
-                type="date"
-                className="h-12 text-base"
-                value={rescheduleDate}
-                onChange={(e) => setRescheduleDate(e.target.value)}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Any attendance already recorded on {activeDate} will move to the new date.
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setRescheduleOpen(false)}
-                className="min-h-14 rounded-2xl bg-secondary font-bold text-secondary-foreground"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={
-                  !rescheduleDate ||
-                  rescheduleDate === activeDate ||
-                  rescheduleMutation.isPending
-                }
-                onClick={() => rescheduleMutation.mutate(rescheduleDate)}
-                className="min-h-14 rounded-2xl bg-primary font-bold text-primary-foreground disabled:opacity-50"
-              >
-                {rescheduleMutation.isPending ? "Moving…" : "Reschedule"}
-              </button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <StudentHistoryDialog
-        student={historyStudent}
-        token={token}
-        onClose={() => setHistoryStudent(null)}
-      />
     </AppShell>
   );
 }
 
-function StudentHistoryDialog({
-  student,
-  token,
-  onClose,
+export function YearGrid({
+  sessions,
+  attendanceIndex,
+  studentId,
 }: {
-  student: { id: string; name: string } | null;
-  token: string;
-  onClose: () => void;
+  sessions: Session[];
+  attendanceIndex: Map<string, AttendanceRecord>;
+  studentId: string;
 }) {
-  const fetchHistory = useServerFn(getStudentHistory);
-  const history = useQuery({
-    queryKey: ["student-history", student?.id],
-    queryFn: () => fetchHistory({ data: { token, studentId: student!.id } }),
-    enabled: Boolean(student),
-    staleTime: 60_000,
-  });
+  const byTrimester: Record<number, Session[]> = { 1: [], 2: [], 3: [] };
+  for (const s of sessions) byTrimester[s.trimester].push(s);
+  for (const t of [1, 2, 3]) {
+    byTrimester[t].sort((a, b) => a.sessionNumber - b.sessionNumber);
+  }
 
   return (
-    <Dialog open={Boolean(student)} onOpenChange={(open) => (open ? null : onClose())}>
-      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{student?.name ?? "Student"}</DialogTitle>
-        </DialogHeader>
-
-        {history.isPending ? (
-          <p className="text-muted-foreground">Loading history…</p>
-        ) : history.isError ? (
-          <p className="text-destructive">Could not load this student&apos;s history.</p>
-        ) : (
-          <div className="space-y-3">
-            <p className="rounded-2xl bg-secondary px-4 py-3 font-semibold text-secondary-foreground">
-              Balance: {formatMoney(history.data?.student?.balance ?? 0)}
-            </p>
-            {(history.data?.records.length ?? 0) === 0 ? (
-              <p className="text-muted-foreground">No sessions recorded yet.</p>
-            ) : (
-              <ul className="space-y-2">
-                {history.data?.records.map((record) => (
-                  <li
-                    key={record.id}
-                    className="flex items-center justify-between gap-3 rounded-2xl border border-border px-4 py-3"
-                  >
-                    <span className="font-semibold text-foreground">{record.date}</span>
-                    <span
-                      className={cn(
-                        "rounded-full px-3 py-1 text-sm font-semibold",
-                        record.status === "present"
-                          ? "bg-brand-orange/15 text-brand-orange"
-                          : record.status === "absent"
-                            ? "bg-destructive/15 text-destructive"
-                            : "bg-muted text-muted-foreground",
-                      )}
-                    >
-                      {labelFor(record.status)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
+    <TooltipPrimitive.Provider delayDuration={0}>
+      <div className="flex flex-col gap-1 py-0.5">
+        {[1, 2, 3].map((t) => (
+          <div key={t} className="flex items-center gap-2">
+            <span className="w-6 text-[10px] font-bold text-muted-foreground">
+              T{t}
+            </span>
+            <div className="flex gap-[3px]">
+              {byTrimester[t].map((s) => {
+                const rec = attendanceIndex.get(attendanceKey(s.id, studentId));
+                const state = blockState(rec, s);
+                return (
+                  <TooltipPrimitive.Root key={s.id}>
+                    <TooltipPrimitive.Trigger asChild>
+                      <button
+                        type="button"
+                        aria-label={`T${t} Session ${s.sessionNumber}: ${meaningOf(state)}`}
+                        className={cn(
+                          "size-3.5 rounded-[3px] cursor-help",
+                          blockClass(state),
+                        )}
+                      />
+                    </TooltipPrimitive.Trigger>
+                    <TooltipPrimitive.Portal>
+                      <TooltipPrimitive.Content
+                        side="top"
+                        sideOffset={6}
+                        className="z-[60] max-w-[240px] rounded-lg bg-foreground px-3 py-2 text-xs font-medium text-background shadow-lg"
+                      >
+                        <p className="font-bold">
+                          T{t} · Session {s.sessionNumber}
+                        </p>
+                        <p className="mt-0.5 opacity-80">
+                          {s.date || "No date set"}
+                        </p>
+                        <p className="mt-1">{meaningOf(state)}</p>
+                        <TooltipPrimitive.Arrow className="fill-foreground" />
+                      </TooltipPrimitive.Content>
+                    </TooltipPrimitive.Portal>
+                  </TooltipPrimitive.Root>
+                );
+              })}
+            </div>
           </div>
-        )}
-      </DialogContent>
-    </Dialog>
+        ))}
+      </div>
+    </TooltipPrimitive.Provider>
   );
+}
+
+function meaningOf(state: BlockState): string {
+  switch (state) {
+    case "present_paid":
+      return "Present · Paid";
+    case "present_unpaid":
+      return "Present · Not paid";
+    case "absent":
+      return "Absent";
+    case "unrecorded":
+      return "Not recorded";
+    case "future":
+      return "Upcoming";
+  }
+}
+
+export function blockClass(state: BlockState): string {
+  switch (state) {
+    case "present_paid":
+      return "bg-emerald-500";
+    case "present_unpaid":
+      return "bg-amber-500";
+    case "absent":
+      return "bg-destructive";
+    case "unrecorded":
+      return "bg-transparent border border-destructive";
+    case "future":
+      return "bg-muted border border-border";
+  }
 }
