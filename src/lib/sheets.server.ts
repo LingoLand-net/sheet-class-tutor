@@ -451,10 +451,6 @@ export async function unenrollStudent(studentId: string, groupId: string): Promi
   return commit(store, await replaceTabs(store, ["enrollments"]));
 }
 
-/**
- * Save roll call. An empty status means "no record" — the record is deleted
- * unless it carries a payment flag we don't want to lose.
- */
 export async function saveRollCall(input: {
   sessionId: string;
   entries: RollCallEntry[];
@@ -475,8 +471,6 @@ export async function saveRollCall(input: {
 
   for (const entry of input.entries) {
     const prev = prior.get(entry.studentId);
-    // If the caller cleared attendance but there's a payment flag, keep the
-    // record with an empty status so the payment isn't lost.
     if (entry.status === "" && !prev?.paid) continue;
     store.attendance.push({
       id: prev?.id ?? newId("a"),
@@ -519,7 +513,6 @@ export async function setStudentSessions(input: {
     const nextStatus = u.status !== undefined ? u.status : (prev?.status ?? "");
     const nextPaid = u.paid !== undefined ? u.paid : (prev?.paid ?? false);
 
-    // If both are empty, drop the row entirely.
     if (nextStatus === "" && nextPaid === false) {
       if (prev) {
         store.attendance = store.attendance.filter((a) => a.id !== prev.id);
@@ -557,152 +550,4 @@ export async function studentHistory(studentId: string): Promise<{
     student: snapshot.students.find((s) => s.id === studentId),
     records: snapshot.attendance.filter((a) => a.studentId === studentId),
   };
-}
-
-/* ---------- Test seed ---------- */
-
-const SEED_GROUPS = [
-  { name: "Beginner Spanish", level: "A1", teacher: "Ms. Lucía Ramos", schedule: "Mon/Wed 17:30" },
-  { name: "Business English", level: "B2", teacher: "Mr. David Cole", schedule: "Tue/Thu 19:00" },
-  { name: "French A1", level: "A1", teacher: "Mme. Claire Petit", schedule: "Sat 10:00" },
-  { name: "Informati9", level: "Beginners", teacher: "Ali", schedule: "Fri 18:00" },
-  { name: "Communication Path", level: "B1", teacher: "Mr. Bessem", schedule: "Sun 16:00" },
-];
-
-const SEED_STUDENTS = [
-  "Amina Haddad", "Youssef Barakat", "Lea Mansour", "Omar Chidiac", "Priya Nair",
-  "Nour Fares", "Rami Kassem", "Dina Sleiman", "Karim Ayoub", "Elena Fischer",
-  "Maya Rizk", "Hadi Nassar", "Sara Khoury", "Tomas Alvarez", "Jing Wei Liu",
-  "Lina Trabelsi", "Mehdi Bouazizi", "Yasmine Gharbi", "Khalil Ben Amor", "Ines Chaabane",
-  "Ayoub Ferchichi", "Salma Hammami", "Rania Bouhlel", "Wassim Jendoubi",
-];
-
-export async function seedTestData(): Promise<LmsSnapshot> {
-  const store: Store = emptyStore();
-
-  const groups: Group[] = SEED_GROUPS.map((g) => ({
-    id: newId("g"),
-    name: g.name,
-    level: g.level,
-    teacher: g.teacher,
-    schedule: g.schedule,
-    status: "active",
-  }));
-  store.groups = groups;
-
-  // Sessions: Tue/Thu cadence starting Sep 8 2026.
-  const baseDate = new Date("2026-09-08T00:00:00");
-  for (const g of groups) {
-    let cursor = new Date(baseDate);
-    for (const trimester of [1, 2, 3] as Trimester[]) {
-      const size = TRIMESTER_SIZES[trimester];
-      for (let n = 1; n <= size; n++) {
-        while (cursor.getDay() !== 2 && cursor.getDay() !== 4) {
-          cursor.setDate(cursor.getDate() + 1);
-        }
-        const y = cursor.getFullYear();
-        const m = String(cursor.getMonth() + 1).padStart(2, "0");
-        const d = String(cursor.getDate()).padStart(2, "0");
-        store.sessions.push({
-          id: newId("sess"),
-          groupId: g.id,
-          trimester,
-          sessionNumber: n,
-          date: `${y}-${m}-${d}`,
-        });
-        cursor.setDate(cursor.getDate() + 1);
-      }
-      cursor.setDate(cursor.getDate() + 14);
-    }
-  }
-
-  const students: Student[] = SEED_STUDENTS.map((name, i) => {
-    const parts = name.toLowerCase().split(/\s+/);
-    return {
-      id: newId("s"),
-      name,
-      phone: `+216 ${20 + (i % 10)} ${100 + i} ${200 + i}`,
-      level: ["A1", "A2", "B1", "B2"][i % 4]!,
-      createdAt: todayIso(),
-      email: `${parts.join(".")}@example.com`,
-      guardianName: "",
-      guardianPhone: "",
-      address: "",
-      notes: "",
-    };
-  });
-  store.students = students;
-
-  for (const s of students) {
-    const primary = groups[Math.floor(Math.random() * groups.length)]!;
-    store.enrollments.push({
-      id: newId("e"),
-      studentId: s.id,
-      groupId: primary.id,
-      status: "active",
-    });
-    if (Math.random() < 0.3) {
-      const secondary = groups[Math.floor(Math.random() * groups.length)]!;
-      if (secondary.id !== primary.id) {
-        store.enrollments.push({
-          id: newId("e"),
-          studentId: s.id,
-          groupId: secondary.id,
-          status: "active",
-        });
-      }
-    }
-  }
-
-  const today = todayIso();
-  for (const e of store.enrollments) {
-    const sessions = store.sessions.filter((s) => s.groupId === e.groupId);
-    for (const sess of sessions) {
-      if (!sess.date || sess.date > today) continue;
-      // 25% of past sessions left with no record at all — simulates a
-      // session the desk lady hasn't recorded, so the year grid shows
-      // red-outlined empty boxes.
-      if (Math.random() < 0.25) continue;
-      const present = Math.random() < 0.85;
-      const paid = Math.random() < 0.7;
-      store.attendance.push({
-        id: newId("a"),
-        sessionId: sess.id,
-        studentId: e.studentId,
-        status: present ? "present" : "absent",
-        paid,
-      });
-    }
-  }
-
-  if (sheetsConnected()) {
-    const cfg = sheetsConfig()!;
-    await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchClear`, {
-      method: "POST",
-      body: JSON.stringify({
-        ranges: [
-          "GROUPS!A2:F20000",
-          "STUDENTS!A2:K20000",
-          "ENROLLMENTS!A2:D20000",
-          "SESSIONS!A2:E20000",
-          "ATTENDANCE!A2:E50000",
-        ],
-      }),
-    });
-    await gateway(`/spreadsheets/${cfg.spreadsheetId}/values:batchUpdate`, {
-      method: "POST",
-      body: JSON.stringify({
-        valueInputOption: "RAW",
-        data: [
-          { range: "GROUPS!A2", values: store.groups.map(groupRow) },
-          { range: "STUDENTS!A2", values: store.students.map(studentRow) },
-          { range: "ENROLLMENTS!A2", values: store.enrollments.map(enrollmentRow) },
-          { range: "SESSIONS!A2", values: store.sessions.map(sessionRow) },
-          { range: "ATTENDANCE!A2", values: store.attendance.map(attendanceRow) },
-        ],
-      }),
-    });
-  }
-
-  return commit(store, sheetsConnected());
 }

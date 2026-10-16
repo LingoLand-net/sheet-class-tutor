@@ -1,24 +1,8 @@
 import { Link } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
-import { ClipboardCheck, Users, GraduationCap, FlaskConical } from "lucide-react";
-import { useState, type ReactNode } from "react";
-import { toast } from "sonner";
+import { ClipboardCheck, Users, GraduationCap } from "lucide-react";
+import type { ReactNode } from "react";
 
-import { AdminPadlock, useAdmin } from "@/components/lms/admin-lock";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { getStoredToken } from "@/lib/auth-client";
-import { seedTestData } from "@/lib/lms.functions";
-import { snapshotQuery } from "@/lib/lms-client";
+import { AdminPadlock } from "@/components/lms/admin-lock";
 
 const TABS = [
   { to: "/", label: "Roll Call", icon: ClipboardCheck },
@@ -44,9 +28,12 @@ export function AppShell({
           <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <img
-                src="/favicon.png"
-                alt="Language Center"
+                src="/language-center-logo.png"
+                alt=""
                 className="size-11 shrink-0 object-contain"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
               />
               <div className="min-w-0">
                 <h1 className="truncate text-xl font-bold text-foreground sm:text-2xl">
@@ -82,70 +69,10 @@ export function AppShell({
       </nav>
 
       <div className="pointer-events-none fixed right-4 bottom-[92px] z-40 sm:right-6">
-        <div className="pointer-events-auto flex flex-col items-end gap-2">
-          <SeedButton />
+        <div className="pointer-events-auto">
           <AdminPadlock />
         </div>
       </div>
     </div>
-  );
-}
-
-function SeedButton() {
-  const { unlocked } = useAdmin();
-  const [confirming, setConfirming] = useState(false);
-  const queryClient = useQueryClient();
-  const seed = useServerFn(seedTestData);
-
-  const mutation = useMutation({
-    mutationFn: () => {
-      const token = getStoredToken() ?? "";
-      return seed({ data: { token } });
-    },
-    onSuccess: (snap) => {
-      queryClient.setQueryData(snapshotQuery.queryKey, snap);
-      toast.success("Test data loaded");
-      setConfirming(false);
-    },
-    onError: () => toast.error("Could not seed"),
-  });
-
-  if (!unlocked) return null;
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setConfirming(true)}
-        disabled={mutation.isPending}
-        aria-label="Seed test data"
-        className="flex h-12 min-w-12 items-center gap-2 rounded-2xl bg-brand-orange px-4 text-base font-semibold text-brand-orange-foreground shadow-md disabled:opacity-60"
-      >
-        <FlaskConical className="size-5" />
-        <span className="hidden sm:inline">Test data</span>
-      </button>
-
-      <AlertDialog open={confirming} onOpenChange={setConfirming}>
-        <AlertDialogContent className="rounded-3xl">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Replace everything with test data?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This wipes all groups, students, enrollments, sessions, and attendance in the
-              sheet, then fills it with realistic test data — 5 groups, ~24 students, and
-              randomized attendance and payment history. Cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="min-h-12 rounded-2xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="min-h-12 rounded-2xl bg-brand-orange text-brand-orange-foreground"
-              onClick={() => mutation.mutate()}
-            >
-              {mutation.isPending ? "Seeding…" : "Wipe and seed"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
   );
 }

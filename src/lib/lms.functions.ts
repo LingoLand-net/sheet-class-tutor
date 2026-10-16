@@ -227,11 +227,3 @@ export const getStudentHistory = createServerFn({ method: "POST" })
     const { studentHistory } = await import("./sheets.server");
     return studentHistory(data.studentId);
   });
-
-export const seedTestData = createServerFn({ method: "POST" })
-  .validator((input: unknown) => tokenSchema.parse(input))
-  .handler(async ({ data }): Promise<LmsSnapshot> => {
-    await requireAuth(data.token);
-    const { seedTestData: seed } = await import("./sheets.server");
-    return seed();
-  });
